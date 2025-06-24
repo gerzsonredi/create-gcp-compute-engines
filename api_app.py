@@ -113,7 +113,7 @@ class ApiApp():
             print(list(measurements.keys()))
 
             # draw the lines on the image
-            self.__measurer.draw_lines(img, measurements)
+            self.__measurer.draw_lines(img, measurements, category_id=category_id)
 
             new_s3_link = self.__upload_image_to_s3(image_data=img, predicted=True)
 
