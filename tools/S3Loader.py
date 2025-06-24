@@ -1,5 +1,6 @@
-import boto3, json, io, requests, time, os, torch
+import boto3, json, io, requests, time, os, torch, cv2
 from PIL import Image
+import numpy as np
 
 class S3Loader():
     def __init__(self):
@@ -8,7 +9,7 @@ class S3Loader():
             self.__config = json.load(jf)
     
 
-    def upload_s3_image(self, public_url="", image_path="", predicted_image=False):
+    def upload_s3_image(self, public_url="", image_path="", image_data="", predicted_image=False):
         """
         Takes a public url as argument, and uploads image to AWS S3 bucket.
         Returns public s3 url
@@ -30,29 +31,32 @@ class S3Loader():
             try:
                 # Download image from public URL
                 response = requests.get(public_url)
+                response.raise_for_status()
                 image_data = io.BytesIO(response.content)
-                
+                print("Read image data")
                 # Generate unique filename using timestamp
                 filename = public_url.split("/")[-1]
 
                 if not filename:
-                    filename = f"image_{time.time()}.jpg"
+                    filename = f"image_{int(time.time())}.jpg"
                 if not filename.lower().endswith(('.jpg', '.png', '.webp', 'jpeg')):
                     filename += ".jpg"
                 if predicted_image:
                     filename = f"Remix_data/predictions/{filename}"
                 else:
                     filename = f"Remix_data/{filename}"
+                print("Using filename: ", filename)
+
                 # Upload to S3
                 s3_client.upload_fileobj(
                     image_data,
                     BUCKET_NAME,
-                    filename,
-                    ExtraArgs={'ACL': 'public-read'}
+                    filename
                 )
                 
                 # Generate and return public S3 URL
                 s3_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{filename}"
+
                 print("SUCCESS: uploaded image to s3!")
                 print(s3_url)
                 return s3_url
@@ -72,7 +76,7 @@ class S3Loader():
                 filename = os.path.basename(image_path)
                 
                 if not filename:
-                    filename = f"image_{time.time()}.jpg"
+                    filename = f"image_{int(time.time())}.jpg"
                 if not filename.lower().endswith(('.jpg', '.png', '.webp', 'jpeg')):
                     filename += ".jpg"
 
@@ -85,8 +89,7 @@ class S3Loader():
                 s3_client.upload_fileobj(
                     image_data,
                     BUCKET_NAME, 
-                    filename,
-                    ExtraArgs={'ACL': 'public-read'}
+                    filename
                 )
                 
                 # Generate and return public S3 URL
@@ -94,7 +97,44 @@ class S3Loader():
                 print("SUCCESS: uploaded image to s3!")
                 print(s3_url)
                 return s3_url
+            
+            except Exception as e:
+                print("ERROR while uploading image to s3")
+                print(e)
+                return None
+            
+        elif not image_data is None:
+            try:
+                filename = ""
+                if not filename:
+                    filename = f"image_{int(time.time())}.jpg"
+                if not filename.lower().endswith(('.jpg', '.png', '.webp', 'jpeg')):
+                    filename += ".jpg"
+
+                if predicted_image:
+                    filename = f"Remix_data/predictions/{filename}"
+                else:
+                    filename = f"Remix_data/{filename}"
                 
+                # Convert numpy array to bytes
+                success, img_encoded = cv2.imencode('.jpg', image_data)
+                if not success:
+                    raise ValueError("Failed to encode image")
+                img_bytes = io.BytesIO(img_encoded.tobytes())
+                
+                # Upload to S3
+                s3_client.upload_fileobj(
+                    img_bytes,
+                    BUCKET_NAME,
+                    filename
+                )
+                
+                # Generate and return public S3 URL
+                s3_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{filename}"
+                print("SUCCESS: uploaded image to s3!")
+                print(s3_url)
+                return s3_url
+            
             except Exception as e:
                 print("ERROR while uploading image to s3")
                 print(e)
@@ -132,12 +172,13 @@ class S3Loader():
     def get_image_from_link(self, public_url):
         """
         Helper function that loads image from public_url
-        Returns PIL Image object
+        Returns numpy array
         """
         try:
             r = requests.get(public_url, timeout=10)
             r.raise_for_status()
-            return Image.open(io.BytesIO(r.content)).convert("RGB") 
+            img = Image.open(io.BytesIO(r.content)).convert("RGB")
+            return np.array(img)
         except Exception as e:
             print("ERROR while loading image ")
             print(e)

@@ -9,7 +9,7 @@ docker build -t clothing-api .
 
 **Run the container**
 ```bash
-docker run -p 5000:5000 clothing-api
+docker run -it -p 5000:5000 -e PYTHONUNBUFFERED=1 clothing-api
 ```
 
 # API Endpoints
@@ -92,7 +92,8 @@ curl -X POST http://127.0.0.1:5000/measurements \
     "w2": [x2, y2],
     "l1": [x3, y3],
     "l2": [x4, y4]
-  }
+  },
+  "url": "https://public-images-redivivum.s3.eu-central-1.amazonaws.com/Remix_data/predictions/image_1750776340.jpg"
 }
 ```
 

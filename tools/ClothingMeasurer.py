@@ -86,13 +86,14 @@ class ClothingMeasurer():
         else:
             length_px = float(np.linalg.norm(l1 - l2))
 
+
         result = {
             "width": width_px,
             "length": length_px,
             "w1": w1,
             "w2": w2,
-            "l1": l1,
-            "l2": l2
+            "l1": (int(l1[0]), int(l1[1])),  # Convert numpy integers to Python integers
+            "l2": (int(l2[0]), int(l2[1]))
         }
         return result
 
