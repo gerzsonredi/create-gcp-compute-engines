@@ -1,6 +1,6 @@
+from __future__ import annotations
 import cv2
 import numpy as np
-from __future__ import annotations
 from numpy.typing import NDArray
 from tools.constants import CATEGORY_TO_COORDS
 from typing import TypedDict

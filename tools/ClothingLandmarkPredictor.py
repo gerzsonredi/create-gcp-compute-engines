@@ -10,12 +10,11 @@ from tools.constants import CAT_SPEC_NODES, CFG_FILE, WEIGHTS
 
 
 class ClothingLandmarkPredictor():
-    def __init__(self):
+    def __init__(self, state=None):
         self.__CFG_FILE   = CFG_FILE
         self.__WEIGHTS    = WEIGHTS
         self.__DEVICE     = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-
         args = Namespace(
             cfg=self.__CFG_FILE,
             opts=[],        # no CLI overrides
@@ -24,10 +23,12 @@ class ClothingLandmarkPredictor():
             dataDir=''
         )
 
-
         update_config(cfg, args)
         self.model = get_pose_net(cfg, is_train=False)       # build HRNet
-        self.state = torch.load(self.__WEIGHTS, map_location=self.__DEVICE)
+        if not state:
+            self.state = torch.load(self.__WEIGHTS, map_location=self.__DEVICE)
+        else:
+            self.state = state
         self.model.load_state_dict(self.state['state_dict'] if 'state_dict' in self.state else self.state)
         self.model.to(self.__DEVICE).eval()
 
@@ -79,13 +80,12 @@ class ClothingLandmarkPredictor():
 
 
     @torch.no_grad()
-    def predict_landmarks(self, img_path, bbox=None):
+    def predict_landmarks(self, img, bbox=None):
         """
-        img_path : str / Path to an image.
+        img_path : PIL Image object.
         bbox     : (x1, y1, w, h) or None.  If None, the full frame is used.
         Returns  : ndarray of shape (num_landmarks, 2) in original-image coords.
         """
-        img = cv2.imread(str(img_path))
         # if bbox is None:
         bbox = [0, 0, img.shape[1], img.shape[0]]
 

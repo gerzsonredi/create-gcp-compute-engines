@@ -18,7 +18,9 @@ RUN apt-get update && apt-get install -y \
 COPY HRNet/requirements.txt /app/hrnet_requirements.txt
 
 # Install Python dependencies
-RUN pip install --no-cache-dir flask torch torchvision yacs
+RUN pip install flask yacs boto3 pillow requests && \
+    pip install --default-timeout=600 torch torchvision
+
 RUN pip install --no-cache-dir -r hrnet_requirements.txt
 
 # Copy the entire application
