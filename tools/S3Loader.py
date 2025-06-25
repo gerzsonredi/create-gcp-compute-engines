@@ -1,6 +1,8 @@
 import boto3, json, io, requests, time, os, torch, cv2
 from PIL import Image
 import numpy as np
+from urllib.parse import urlparse
+
 
 class S3Loader():
     def __init__(self):
@@ -14,8 +16,8 @@ class S3Loader():
         Takes a public url as argument, and uploads image to AWS S3 bucket.
         Returns public s3 url
         """
-        AWS_ACCESS_KEY_ID       = self.__config.get("ACCESS_KEY", "")
-        AWS_SECRET_ACCESS_KEY   = self.__config.get("SECRET_KEY", "")
+        AWS_ACCESS_KEY_ID       = self.__config.get("ACCES_KEY_ARTIFACTS", "")
+        AWS_SECRET_ACCESS_KEY   = self.__config.get("SECRET_KEY_ARTIFACTS", "")
         BUCKET_NAME             = self.__config.get("BUCKET_NAME", "")
         REGION                  = self.__config.get("REGION", "")
         
@@ -171,15 +173,68 @@ class S3Loader():
         
     def get_image_from_link(self, public_url):
         """
-        Helper function that loads image from public_url
+        Helper function that loads image from public_url or private S3 URL
         Returns numpy array
         """
         try:
-            r = requests.get(public_url, timeout=10)
-            r.raise_for_status()
-            img = Image.open(io.BytesIO(r.content)).convert("RGB")
-            return np.array(img)
+            # Check if it's an S3 URL that might require credentials
+            if 's3' in public_url and 'amazonaws.com' in public_url:
+                return self._get_image_from_s3_url(public_url)
+            else:
+                r = requests.get(public_url, timeout=10)
+                r.raise_for_status()
+                img = Image.open(io.BytesIO(r.content)).convert("RGB")
+                return np.array(img)
         except Exception as e:
             print("ERROR while loading image ")
             print(e)
+            return None
+        
+    def _get_image_from_s3_url(self, s3_url):
+        """
+        Helper function to get image from S3 URL using AWS credentials
+        """
+        try:
+            # Parse the S3 URL to extract bucket and key
+            # Format: https://bucket-name.s3.region.amazonaws.com/key
+            # or: https://s3.region.amazonaws.com/bucket-name/key
+            
+            parsed_url = urlparse(s3_url)
+            
+            if parsed_url.hostname.startswith('s3.') or parsed_url.hostname.endswith('.amazonaws.com'):
+                # Extract bucket and key from URL
+                if parsed_url.hostname.endswith('.s3.amazonaws.com') or '.s3.' in parsed_url.hostname:
+                    # Format: bucket-name.s3.region.amazonaws.com
+                    bucket_name = parsed_url.hostname.split('.s3.')[0]
+                    key = parsed_url.path.lstrip('/')
+                else:
+                    # Format: s3.region.amazonaws.com/bucket-name/key
+                    path_parts = parsed_url.path.lstrip('/').split('/', 1)
+                    bucket_name = path_parts[0]
+                    key = path_parts[1] if len(path_parts) > 1 else ''
+            else:
+                raise ValueError(f"Unrecognized S3 URL format: {s3_url}")
+            
+            AWS_ACCESS_KEY_ID = self.__config.get("ACCES_KEY_ARTIFACTS", "")
+            AWS_SECRET_ACCESS_KEY = self.__config.get("SECRET_KEY_ARTIFACTS", "")
+            REGION = self.__config.get("REGION", "")
+            
+            session = boto3.Session(
+                aws_access_key_id=AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                region_name=REGION
+            )
+            
+            s3_client = session.client('s3')
+            
+            # Get the object from S3
+            response = s3_client.get_object(Bucket=bucket_name, Key=key)
+            image_data = response['Body'].read()
+            
+            # Convert to PIL Image and then numpy array
+            img = Image.open(io.BytesIO(image_data)).convert("RGB")
+            return np.array(img)
+            
+        except Exception as e:
+            print(f"ERROR while loading image from S3: {e}")
             return None

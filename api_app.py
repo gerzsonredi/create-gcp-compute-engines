@@ -1,9 +1,8 @@
 from flask import Flask, request, jsonify
-import cv2
+import cv2, sys
 from tools.ClothingLandmarkPredictor import ClothingLandmarkPredictor
 from tools.ClothingMeasurer import ClothingMeasurer
 from tools.S3Loader import S3Loader
-import sys
 
 class ApiApp():
     def __init__(self):
@@ -50,6 +49,8 @@ class ApiApp():
 
             if s3_url:
                 img = self.__get_image_from_s3_link(public_url=s3_url)
+                if img is None:
+                    img = self.__get_image_from_s3_link(public_url=image_url)
                 landmarks = self.__landmark_predictor.predict_landmarks(img=img)
             else:
                 if image_path:
@@ -106,6 +107,8 @@ class ApiApp():
             category_landmarks = self.__landmark_predictor.filter_by_category(landmarks, category_id)
             
             img = self.__get_image_from_s3_link(s3_url)
+            if img is None:
+                img = self.__get_image_from_s3_link(public_url=image_url)
             measurements = self.__measurer.calculate_measurements(img, category_landmarks, category_id=category_id)
             
             if measurements is None:
@@ -133,3 +136,6 @@ class ApiApp():
 if __name__ == '__main__':
     api_app = ApiApp()
     api_app.run_app()
+
+    # TODO: pictures-not-public bucketba menjen a feltöltés
+    # TODO: OpenAI-os cucc
