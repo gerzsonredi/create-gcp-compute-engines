@@ -15,8 +15,8 @@ class MeasurementResult(TypedDict):
     l2:     tuple[int, int]
 
 
-class ClothingMeasurer():
-    def __init__(self):
+class ClothingMeasurer:
+    def __init__(self, logger):
         self.__category_to_coordinates = {
             1: {    # short-sleeved tops
                 "width": [11, 19],  
@@ -31,6 +31,9 @@ class ClothingMeasurer():
                 "length": [20, 22]
             }
         }
+        self.__logger = logger
+        print("ClothingMeasurer initialized successfully!")
+        self.__logger.log("ClothingMeasurer initialized successfully!")
 
 
     def calculate_measurements(
@@ -42,7 +45,7 @@ class ClothingMeasurer():
             category_id: int = 1,
         ) -> MeasurementResult:
         """
-        Calculate “width” and “length” guide lines for a set of landmarks and
+        Calculate "width" and "length" guide lines for a set of landmarks and
         return their pixel distances.
 
         Parameters
@@ -64,7 +67,10 @@ class ClothingMeasurer():
         try:
             indices = CATEGORY_TO_COORDS[category_id]
         except KeyError as exc:
-            raise ValueError(f"Unknown category_id {category_id}") from exc
+            error_msg = f"Unknown category_id {category_id}"
+            print(f"ERROR: {error_msg}")
+            self.__logger.log(f"ERROR: {error_msg}")
+            raise ValueError(error_msg) from exc
 
         # --- Width -------------------------------------------------------------
         w_idx1, w_idx2 = indices["width"]
@@ -86,6 +92,8 @@ class ClothingMeasurer():
         else:
             length_px = float(np.linalg.norm(l1 - l2))
 
+        print(f"Calculated measurements - width: {width_px:.2f}px, length: {length_px:.2f}px")
+        self.__logger.log(f"Calculated measurements - width: {width_px:.2f}px, length: {length_px:.2f}px")
 
         result = {
             "width": width_px,
@@ -125,3 +133,6 @@ class ClothingMeasurer():
             cv2.line(img_bgr, pts["l1"], l2_projected, color, thickness=5)
         else:
             cv2.line(img_bgr, pts["l1"], pts["l2"], color, thickness=5)
+        
+        print("Successfully drew measurement lines on image")
+        self.__logger.log("Successfully drew measurement lines on image")

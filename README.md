@@ -97,6 +97,14 @@ curl -X POST http://127.0.0.1:5000/measurements \
 }
 ```
 
+## Example Results 🖼️
+
+| Original Image | Prediction with Measurements |
+|---------------|----------------------------|
+| ![Original shirt](image/README/image_1750776340.jpg) | ![Shirt with measurements](image/README/pred_1750776340.jpg) |
+
+The API detects key landmarks on the clothing item and uses them to calculate measurements. The prediction image shows the measurement lines overlaid on the original image.
+
 ## Category IDs
 
 - `1`: Short-sleeved tops

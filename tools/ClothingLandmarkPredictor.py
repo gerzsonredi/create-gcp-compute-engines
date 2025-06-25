@@ -9,12 +9,12 @@ from argparse import Namespace
 from tools.constants import CAT_SPEC_NODES, CFG_FILE, WEIGHTS
 
 
-class ClothingLandmarkPredictor():
-    def __init__(self, state=None):
+class ClothingLandmarkPredictor:
+    def __init__(self, logger, state=None):
         self.__CFG_FILE   = CFG_FILE
         self.__WEIGHTS    = WEIGHTS
         self.__DEVICE     = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
+        self.__logger     = logger
         args = Namespace(
             cfg=self.__CFG_FILE,
             opts=[],        # no CLI overrides
@@ -23,8 +23,16 @@ class ClothingLandmarkPredictor():
             dataDir=''
         )
 
+        print("Updating HRNet config...")
+        self.__logger.log("Updating HRNet config...")
         update_config(cfg, args)
+        
+        print("Building HRNet model...")
+        self.__logger.log("Building HRNet model...")
         self.model = get_pose_net(cfg, is_train=False)       # build HRNet
+        
+        print("Loading model weights...")
+        self.__logger.log("Loading model weights...")
         if not state:
             self.state = torch.load(self.__WEIGHTS, map_location=self.__DEVICE)
         else:
@@ -39,7 +47,8 @@ class ClothingLandmarkPredictor():
             transforms.ToTensor(),
             transforms.Normalize(mean=self.__MEAN, std=self.__STD)
         ])
-        print("HRNet model loaded!")
+        print("HRNet model loaded successfully!")
+        self.__logger.log("HRNet model loaded successfully!")
 
     def __crop_and_warp(self, img_bgr, bbox):
         """
@@ -86,6 +95,9 @@ class ClothingLandmarkPredictor():
         bbox     : (x1, y1, w, h) or None.  If None, the full frame is used.
         Returns  : ndarray of shape (num_landmarks, 2) in original-image coords.
         """
+        print("Predicting landmarks...")
+        self.__logger.log("Predicting landmarks...")
+        
         # if bbox is None:
         bbox = [0, 0, img.shape[1], img.shape[0]]
 
@@ -99,6 +111,8 @@ class ClothingLandmarkPredictor():
                     center, scale,          # from _crop_and_warp
                     cfg.MODEL.HEATMAP_SIZE)
         
+        print("Successfully predicted landmarks")
+        self.__logger.log("Successfully predicted landmarks")
         return coords_img
 
 
@@ -108,6 +122,6 @@ class ClothingLandmarkPredictor():
         category_id: 1-13 as defined by DeepFashion2.
         Returns    : (K, 2) array with only the landmarks for that garment.
         """
+        print(f"Filtering landmarks for category {category_id}")
+        self.__logger.log(f"Filtering landmarks for category {category_id}")
         return coords_294[CAT_SPEC_NODES[category_id]]
-
-    

@@ -4,11 +4,12 @@ import numpy as np
 from urllib.parse import urlparse
 
 
-class S3Loader():
-    def __init__(self):
+class S3Loader:
+    def __init__(self, logger):
         CONFIG_FILE = "configs/config_general_aws.json"
         with open(CONFIG_FILE, "r") as jf:
             self.__config = json.load(jf)
+        self.__logger = logger
     
 
     def upload_s3_image(self, public_url="", image_path="", image_data="", predicted_image=False):
@@ -36,6 +37,7 @@ class S3Loader():
                 response.raise_for_status()
                 image_data = io.BytesIO(response.content)
                 print("Read image data")
+                self.__logger.log("Read image data")
                 # Generate unique filename using timestamp
                 filename = public_url.split("/")[-1]
 
@@ -47,7 +49,8 @@ class S3Loader():
                     filename = f"Remix_data/predictions/{filename}"
                 else:
                     filename = f"Remix_data/{filename}"
-                print("Using filename: ", filename)
+                print(f"Using filename: {filename}")
+                self.__logger.log(f"Using filename: {filename}")
 
                 # Upload to S3
                 s3_client.upload_fileobj(
@@ -61,11 +64,15 @@ class S3Loader():
 
                 print("SUCCESS: uploaded image to s3!")
                 print(s3_url)
+                self.__logger.log("SUCCESS: uploaded image to s3!")
+                self.__logger.log(s3_url)
                 return s3_url
             
             except Exception as e:
                 print("ERROR while uploading image to s3")
                 print(e)
+                self.__logger.log("ERROR while uploading image to s3")
+                self.__logger.log(str(e))
                 return None
             
         elif image_path:
@@ -98,11 +105,15 @@ class S3Loader():
                 s3_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{filename}"
                 print("SUCCESS: uploaded image to s3!")
                 print(s3_url)
+                self.__logger.log("SUCCESS: uploaded image to s3!")
+                self.__logger.log(s3_url)
                 return s3_url
             
             except Exception as e:
                 print("ERROR while uploading image to s3")
                 print(e)
+                self.__logger.log("ERROR while uploading image to s3")
+                self.__logger.log(str(e))
                 return None
             
         elif not image_data is None:
@@ -135,11 +146,15 @@ class S3Loader():
                 s3_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{filename}"
                 print("SUCCESS: uploaded image to s3!")
                 print(s3_url)
+                self.__logger.log("SUCCESS: uploaded image to s3!")
+                self.__logger.log(s3_url)
                 return s3_url
             
             except Exception as e:
                 print("ERROR while uploading image to s3")
                 print(e)
+                self.__logger.log("ERROR while uploading image to s3")
+                self.__logger.log(str(e))
                 return None
     
     def load_hrnet_model(self):
@@ -169,6 +184,8 @@ class S3Loader():
         except Exception as e:
             print("ERROR while loading model from s3")
             print(e)
+            self.__logger.log("ERROR while loading model from s3")
+            self.__logger.log(str(e))
             return None
         
     def get_image_from_link(self, public_url):
@@ -188,6 +205,8 @@ class S3Loader():
         except Exception as e:
             print("ERROR while loading image ")
             print(e)
+            self.__logger.log("ERROR while loading image")
+            self.__logger.log(str(e))
             return None
         
     def _get_image_from_s3_url(self, s3_url):
@@ -237,4 +256,5 @@ class S3Loader():
             
         except Exception as e:
             print(f"ERROR while loading image from S3: {e}")
+            self.__logger.log(f"ERROR while loading image from S3: {e}")
             return None
