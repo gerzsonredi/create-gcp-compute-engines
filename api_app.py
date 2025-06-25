@@ -157,3 +157,7 @@ class ApiApp:
 if __name__ == '__main__':
     api_app = ApiApp()
     api_app.run_app()
+
+# For gunicorn
+api_app_instance = ApiApp()
+app = api_app_instance._ApiApp__app 

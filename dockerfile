@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
 COPY HRNet/requirements.txt /app/hrnet_requirements.txt
 
 # Install Python dependencies
-RUN pip install flask yacs boto3 pillow requests && \
+RUN pip install flask yacs boto3 pillow requests gunicorn && \
     pip install --default-timeout=600 torch torchvision
 
 RUN pip install --no-cache-dir -r hrnet_requirements.txt
@@ -39,4 +39,4 @@ ENV FLASK_RUN_PORT=5000
 EXPOSE 5000
 
 # Command to run the application
-CMD ["python", "api_app.py"]
+CMD ["gunicorn", "--config", "configs/gunicorn.conf.py", "api_app:app"]
