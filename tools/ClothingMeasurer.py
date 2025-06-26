@@ -76,9 +76,9 @@ class ClothingMeasurer:
         w_idx1, w_idx2 = indices["width"]
         w1, w2 = pts[[w_idx1, w_idx2]].astype(int)
 
-        y_mid = int(np.mean((w1[1], w2[1])))      # horizontal line at average y
-        w1 = (int(w1[0]), y_mid)
-        w2 = (int(w2[0]), y_mid)
+        # y_mid = int(np.mean((w1[1], w2[1])))      # horizontal line at average y
+        w1 = (int(w1[0]), int(w1[1]))
+        w2 = (int(w2[0]), int(w2[1]))
 
         width_px: float = float(np.linalg.norm(np.subtract(w1, w2)))
 

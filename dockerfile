@@ -33,10 +33,10 @@ RUN mkdir -p /app/artifacts /app/tools /app/HRNet
 ENV PYTHONPATH=/app
 ENV FLASK_APP=api_app.py
 ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_RUN_PORT=5000
+ENV FLASK_RUN_PORT=5003
 
 # Expose the port the app runs on
-EXPOSE 5000
+EXPOSE 5003
 
 # Command to run the application
 CMD ["gunicorn", "--config", "configs/gunicorn.conf.py", "api_app:app"]

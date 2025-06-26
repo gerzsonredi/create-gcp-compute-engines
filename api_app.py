@@ -52,7 +52,7 @@ class ApiApp:
     def run_app(self):
         try:
             sys.stdout.reconfigure(line_buffering=True)
-            self.__app.run(host='0.0.0.0', port=5000, debug=True)
+            self.__app.run(host='0.0.0.0', port=5003, debug=True)
         except Exception as e:
             error_msg = f"Failed to start Flask app: {str(e)}"
             print(error_msg)
