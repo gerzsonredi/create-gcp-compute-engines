@@ -98,7 +98,7 @@ class ApiApp:
             self.__logger.log(f"S3 upload result: {s3_url}")
 
             img = None
-            if s3_url:
+            if s3_url or image_url:
                 img = self.__get_image_from_s3_link(public_url=s3_url)
                 if img is None:
                     img = self.__get_image_from_s3_link(public_url=image_url)
