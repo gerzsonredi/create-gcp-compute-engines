@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import cv2, sys, traceback
 from tools.ClothingLandmarkPredictor import ClothingLandmarkPredictor
 from tools.ClothingMeasurer import ClothingMeasurer
+from tools.ClothingCategoryPredictor import ClothingCategoryPredictor
 from tools.S3Loader import S3Loader
 from tools.logger import EVFSAMLogger
 
@@ -30,6 +31,10 @@ class ApiApp:
             print("Initializing ClothingMeasurer...")
             self.__logger.log("Initializing ClothingMeasurer...")
             self.__measurer = ClothingMeasurer(logger=self.__logger)
+
+            print("Initializing ClothingCategoryPredictor...")
+            self.__logger.log("Initializing ClothingCategoryPredictor...")
+            self.__category_predictor = ClothingCategoryPredictor(logger=self.__logger)
 
             print("Setting up routes...")
             self.__logger.log("Setting up routes...")
@@ -307,14 +312,14 @@ class ApiApp:
             
             image_path  = data.get('image_path', '')
             image_url   = data.get('image_url', '')     # the removed mannequin image used to calculate measurements
-            category_id = data.get('category_id', 1)
+            # category_id = data.get('category_id', 1)
             bg_img_url  = data.get('bg_img_url', '')    # original image to use as background, to draw the measurements
             
-            # Validate category_id
-            try:
-                category_id = int(category_id)
-            except (ValueError, TypeError):
-                return jsonify({'error': 'category_id must be an integer'}), 400
+            # # Validate category_id
+            # try:
+            #     category_id = int(category_id)
+            # except (ValueError, TypeError):
+            #     return jsonify({'error': 'category_id must be an integer'}), 400
             
             if not image_path and not image_url:
                 return jsonify({'error': 'Either image_path or image_url is required'}), 400
@@ -327,15 +332,6 @@ class ApiApp:
             if landmarks is None:
                 return jsonify({'success': False, 'error': "Could not detect landmarks in image"}), 400
             
-            # Filter by category with error handling
-            try:
-                category_landmarks = self.__landmark_predictor.filter_by_category(landmarks, category_id)
-            except Exception as e:
-                error_msg = f"Failed to filter landmarks by category {category_id}: {str(e)}"
-                print(error_msg)
-                self.__logger.log(error_msg)
-                return jsonify({'success': False, 'error': f"Invalid category_id: {category_id}"}), 400
-            
             # Get image for measurements
             img = None
             if s3_url:
@@ -345,6 +341,33 @@ class ApiApp:
             
             if img is None:
                 return jsonify({'success': False, 'error': "Could not load image for measurements"}), 500
+            
+            # predict the category of the clothing item
+            category_id = 0
+            try:
+                category_id, _ = self.__category_predictor.pred(img=img, return_idx=True)
+                msg = f"Category predictor predicted the {category_id=}."
+                print(msg)
+                self.__logger.log(msg)
+                if category_id == 0:
+                    msg = "Category predictor predicted the category \"other\"."
+                    print(msg)
+                    self.__logger.log(msg)
+                    return jsonify({'success': True, 'message': msg, "url": image_url}), 200
+            except Exception as e:
+                error_msg = f"Failed to detect category from the image: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'success': False, 'error': "Failed to detect category!"}), 400
+
+            # Filter by category with error handling
+            try:
+                category_landmarks = self.__landmark_predictor.filter_by_category(landmarks, category_id)
+            except Exception as e:
+                error_msg = f"Failed to filter landmarks by category {category_id}: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'success': False, 'error': f"Invalid category_id: {category_id}"}), 400
             
             # Calculate measurements with error handling
             try:
@@ -402,7 +425,7 @@ class ApiApp:
                 'success': True,
                 'measurements': measurements,
                 'url': new_s3_link
-            })
+            }), 200
         
         except Exception as e:
             error_msg = f"Unexpected error in get_measurements: {str(e)}"

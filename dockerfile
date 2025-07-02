@@ -19,7 +19,7 @@ COPY HRNet/requirements.txt /app/hrnet_requirements.txt
 
 # Install Python dependencies
 RUN pip install flask yacs boto3 pillow requests gunicorn && \
-    pip install --default-timeout=600 torch torchvision
+    pip install --default-timeout=600 torch torchvision transformers
 
 RUN pip install --no-cache-dir -r hrnet_requirements.txt
 

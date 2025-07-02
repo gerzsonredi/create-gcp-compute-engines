@@ -33,3 +33,22 @@ CATEGORY_TO_COORDS: dict[int, dict[str, list[int]]] = {
     12: {"width": [7, 17],  "length": [1, 11]},    # vest dress
     13: {"width": [7, 17],  "length": [6, 11]},    # sling dress
 }
+
+CATEGORY_LABELS = [
+    "other",
+    "short-sleeve top",
+    "long-sleeve top",
+    "short-sleeve outwear",
+    "long-sleeve outwear",
+    "vest",
+    "sling",
+    "shorts",
+    "trousers",
+    "skirt",
+    "short-sleeve dress",
+    "long-sleeve dress",
+    "vest dress",
+    "sling dress"
+]
+
+CATEGORY_MODEL_NAME = "patrickjohncyh/fashion-clip"
