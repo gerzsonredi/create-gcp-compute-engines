@@ -17,20 +17,6 @@ class MeasurementResult(TypedDict):
 
 class ClothingMeasurer:
     def __init__(self, logger):
-        self.__category_to_coordinates = {
-            1: {    # short-sleeved tops
-                "width": [11, 19],  
-                "length": [1, 14]
-            },
-            7: {    # shorts
-                "width": [2, 4],
-                "length": [7, 8]
-            },
-            8: {    # trousers
-                "width": [3, 5],
-                "length": [20, 22]
-            }
-        }
         self.__logger = logger
         print("ClothingMeasurer initialized successfully!")
         self.__logger.log("ClothingMeasurer initialized successfully!")
@@ -76,7 +62,7 @@ class ClothingMeasurer:
         w_idx1, w_idx2 = indices["width"]
         w1, w2 = pts[[w_idx1, w_idx2]].astype(int)
 
-        # y_mid = int(np.mean((w1[1], w2[1])))      # horizontal line at average y
+        # y_mid = int(np.mean((w1[1], w2[1]))) 
         w1 = (int(w1[0]), int(w1[1]))
         w2 = (int(w2[0]), int(w2[1]))
 
@@ -86,11 +72,11 @@ class ClothingMeasurer:
         l_idx1, l_idx2 = indices["length"]
         l1, l2 = pts[[l_idx1, l_idx2]].astype(int)
 
-        if category_id == 1:
+        if category_id in (7, 8, 9):
+            length_px = float(np.linalg.norm(l1 - l2))
+        else:
             # Draw strictly vertical segment
             length_px: float = float(abs(l2[1] - l1[1]))
-        else:
-            length_px = float(np.linalg.norm(l1 - l2))
 
         print(f"Calculated measurements - width: {width_px:.2f}px, length: {length_px:.2f}px")
         self.__logger.log(f"Calculated measurements - width: {width_px:.2f}px, length: {length_px:.2f}px")
@@ -128,11 +114,11 @@ class ClothingMeasurer:
 
         cv2.line(img_bgr, pts["w1"], pts["w2"], color, thickness=5)
         # Draw strictly vertical segment
-        if category_id == 1:
+        if category_id in (7,8,9):
+            cv2.line(img_bgr, pts["l1"], pts["l2"], color, thickness=5)
+        else:
             l2_projected = (int(pts["l1"][0]), int(pts["l2"][1]))
             cv2.line(img_bgr, pts["l1"], l2_projected, color, thickness=5)
-        else:
-            cv2.line(img_bgr, pts["l1"], pts["l2"], color, thickness=5)
         
         print("Successfully drew measurement lines on image")
         self.__logger.log("Successfully drew measurement lines on image")

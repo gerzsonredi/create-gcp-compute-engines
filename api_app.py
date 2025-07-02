@@ -35,6 +35,7 @@ class ApiApp:
             self.__logger.log("Setting up routes...")
             self.__app.route('/landmarks', methods=['POST'])(self.get_landmarks)
             self.__app.route('/measurements', methods=['POST'])(self.get_measurements)
+            self.__app.route('/draw_measurements', methods=['POST'])(self.draw_measurements)
             self.__app.route('/health', methods=['GET'])(self.health_check)
             
             print("Flask app initialized successfully!")
@@ -190,6 +191,106 @@ class ApiApp:
             print(f"Traceback: {traceback.format_exc()}")
             self.__logger.log(f"Traceback: {traceback.format_exc()}")
             return jsonify({'error': 'Internal server error'}), 500
+        
+    def draw_measurements(self):
+        try:
+            # Parse JSON with error handling
+            try:
+                data = request.get_json()
+                if data is None:
+                    return jsonify({'error': 'Invalid JSON or Content-Type not set to application/json'}), 400
+            except Exception as e:
+                error_msg = f"Failed to parse JSON: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'error': 'Invalid JSON format'}), 400
+            
+            landmarks = data.get('landmarks')
+            image_url_bg = data.get('image_url_bg', '')
+            category_id = data.get('category_id', 1)
+            
+            # Validate required parameters
+            if landmarks is None:
+                return jsonify({'error': 'landmarks parameter is required'}), 400
+            
+            if not image_url_bg:
+                return jsonify({'error': 'image_url_bg parameter is required'}), 400
+            
+            # Validate category_id
+            try:
+                category_id = int(category_id)
+            except (ValueError, TypeError):
+                return jsonify({'error': 'category_id must be an integer'}), 400
+            
+            # Convert landmarks back to numpy array if needed
+            try:
+                import numpy as np
+                if isinstance(landmarks, list):
+                    landmarks = np.array(landmarks)
+            except Exception as e:
+                error_msg = f"Failed to process landmarks: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'error': 'Invalid landmarks format'}), 400
+            
+            # Get background image
+            bg_img = self.__get_image_from_s3_link(public_url=image_url_bg)
+            if bg_img is None:
+                return jsonify({'success': False, 'error': "Could not load background image"}), 500
+            
+            # Filter landmarks by category
+            try:
+                category_landmarks = self.__landmark_predictor.filter_by_category(landmarks, category_id)
+            except Exception as e:
+                error_msg = f"Failed to filter landmarks by category {category_id}: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'success': False, 'error': f"Invalid category_id: {category_id}"}), 400
+            
+            # Calculate measurements
+            try:
+                measurements = self.__measurer.calculate_measurements(bg_img, category_landmarks, category_id=category_id)
+            except Exception as e:
+                error_msg = f"Failed to calculate measurements: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'success': False, 'error': "Failed to calculate measurements"}), 500
+            
+            if measurements is None:
+                return jsonify({'success': False, 'error': "Could not calculate measurements from landmarks"}), 400
+            
+            print(f"Drawing measurements on background image. Measurement keys: {list(measurements.keys())}")
+            self.__logger.log(f"Drawing measurements on background image. Measurement keys: {list(measurements.keys())}")
+
+            # Draw measurement lines on background image
+            try:
+                self.__measurer.draw_lines(bg_img, measurements, category_id=category_id)
+            except Exception as e:
+                error_msg = f"Failed to draw measurement lines: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'success': False, 'error': "Failed to draw measurement lines"}), 500
+
+            # Upload result image to S3
+            result_s3_url = self.__upload_image_to_s3(image_data=bg_img, predicted=True)
+            if result_s3_url is None:
+                self.__logger.log("Failed to upload result image to S3")
+                return jsonify({'success': False, 'error': "Failed to upload result image"}), 500
+
+            return jsonify({
+                'success': True,
+                'message': 'Measurements drawn successfully',
+                'url': result_s3_url,
+                'measurements': measurements
+            })
+        
+        except Exception as e:
+            error_msg = f"Unexpected error in draw_measurements: {str(e)}"
+            print(error_msg)
+            self.__logger.log(error_msg)
+            print(f"Traceback: {traceback.format_exc()}")
+            self.__logger.log(f"Traceback: {traceback.format_exc()}")
+            return jsonify({'error': 'Internal server error'}), 500
 
     def get_measurements(self):
         try:
@@ -205,8 +306,9 @@ class ApiApp:
                 return jsonify({'error': 'Invalid JSON format'}), 400
             
             image_path  = data.get('image_path', '')
-            image_url   = data.get('image_url', '')
+            image_url   = data.get('image_url', '')     # the removed mannequin image used to calculate measurements
             category_id = data.get('category_id', 1)
+            bg_img_url  = data.get('bg_img_url', '')    # original image to use as background, to draw the measurements
             
             # Validate category_id
             try:
@@ -259,9 +361,32 @@ class ApiApp:
             print(f"Measurement keys: {list(measurements.keys())}")
             self.__logger.log(f"Measurement keys: {list(measurements.keys())}")
 
-            # Draw lines on image with error handling
+            # Draw lines on background image with error handling
+            bg_img = None
             try:
-                self.__measurer.draw_lines(img, measurements, category_id=category_id)
+                if bg_img_url:
+                    bg_img = self.__get_image_from_s3_link(bg_img_url)
+                if bg_img is None and s3_url:
+                    bg_img = self.__get_image_from_s3_link(public_url=s3_url)
+                if bg_img is None and image_url:
+                    bg_img = self.__get_image_from_s3_link(public_url=image_url)
+                if bg_img is None and not img is None:
+                    bg_img = img
+                
+                if bg_img is None: 
+                    return jsonify({'success': False, 'error': "Could not load image for drawing"}), 500
+                
+                warning_msg = f"No background image provided, using removed mannequin image"
+                print(warning_msg)
+                self.__logger.log(warning_msg)
+            except:
+                error_msg = f"Failed to load background image, using removed mannequin image"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                bg_img = img
+                
+            try:
+                self.__measurer.draw_lines(bg_img, measurements, category_id=category_id)
             except Exception as e:
                 error_msg = f"Failed to draw measurement lines: {str(e)}"
                 print(error_msg)
@@ -269,7 +394,7 @@ class ApiApp:
                 # Continue without drawing - not critical
 
             # Upload result image with error handling
-            new_s3_link = self.__upload_image_to_s3(image_data=img, predicted=True)
+            new_s3_link = self.__upload_image_to_s3(image_data=bg_img, predicted=True)
             if new_s3_link is None:
                 self.__logger.log("Failed to upload result image to S3, continuing without URL")
 

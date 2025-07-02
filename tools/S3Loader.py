@@ -200,8 +200,10 @@ class S3Loader:
             else:
                 r = requests.get(public_url, timeout=10)
                 r.raise_for_status()
-                img = Image.open(io.BytesIO(r.content)).convert("RGB")
-                return np.array(img)
+                img = Image.open(io.BytesIO(r.content)) #.convert("RGB")
+                img = np.array(img)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                return img
         except Exception as e:
             print("ERROR while loading image ")
             print(e)
@@ -251,8 +253,10 @@ class S3Loader:
             image_data = response['Body'].read()
             
             # Convert to PIL Image and then numpy array
-            img = Image.open(io.BytesIO(image_data)).convert("RGB")
-            return np.array(img)
+            img = Image.open(io.BytesIO(image_data)) #.convert("RGB")
+            img = np.array(img)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            return img
             
         except Exception as e:
             print(f"ERROR while loading image from S3: {e}")

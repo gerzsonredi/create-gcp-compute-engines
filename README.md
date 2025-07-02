@@ -9,7 +9,7 @@ docker build -t clothing-api .
 
 **Run the container**
 ```bash
-docker run -it -p 5000:5000 -e PYTHONUNBUFFERED=1 clothing-api
+docker run -it -p 5003:5003 -e PYTHONUNBUFFERED=1 clothing-api
 ```
 
 # API Endpoints
@@ -19,7 +19,7 @@ docker run -it -p 5000:5000 -e PYTHONUNBUFFERED=1 clothing-api
 Test if the API is running:
 
 ```bash
-curl http://127.0.0.1:5000/health
+curl http://127.0.0.1:5003/health
 ```
 
 **Expected Response:**
@@ -36,14 +36,14 @@ Get clothing landmarks from an image.
 
 ### With image_path:
 ```bash
-curl -X POST http://127.0.0.1:5000/landmarks \
+curl -X POST http://127.0.0.1:5003/landmarks \
   -H "Content-Type: application/json" \
   -d '{"image_path": "/path/to/your/image.jpg"}'
 ```
 
 ### With image_url:
 ```bash
-curl -X POST http://127.0.0.1:5000/landmarks \
+curl -X POST http://127.0.0.1:5003/landmarks \
   -H "Content-Type: application/json" \
   -d '{"image_url": "https://example.com/image.jpg"}'
 ```
@@ -62,21 +62,21 @@ Calculate clothing measurements from an image.
 
 ### With image_path and default category (category_id=1):
 ```bash
-curl -X POST http://127.0.0.1:5000/measurements \
+curl -X POST http://127.0.0.1:5003/measurements \
   -H "Content-Type: application/json" \
   -d '{"image_path": "/path/to/your/image.jpg"}'
 ```
 
 ### With image_path and specific category:
 ```bash
-curl -X POST http://127.0.0.1:5000/measurements \
+curl -X POST http://127.0.0.1:5003/measurements \
   -H "Content-Type: application/json" \
   -d '{"image_path": "/path/to/your/image.jpg", "category_id": 7}'
 ```
 
 ### With image_url:
 ```bash
-curl -X POST http://127.0.0.1:5000/measurements \
+curl -X POST http://127.0.0.1:5003/measurements \
   -H "Content-Type: application/json" \
   -d '{"image_url": "https://example.com/image.jpg", "category_id": 8}'
 ```
@@ -115,7 +115,7 @@ The API detects key landmarks on the clothing item and uses them to calculate me
 
 Test missing image parameter (should return 400 error):
 ```bash
-curl -X POST http://127.0.0.1:5000/landmarks \
+curl -X POST http://127.0.0.1:5003/landmarks \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -124,7 +124,7 @@ curl -X POST http://127.0.0.1:5000/landmarks \
 
 For formatted JSON responses, pipe the output through `jq`:
 ```bash
-curl -X POST http://127.0.0.1:5000/landmarks \
+curl -X POST http://127.0.0.1:5003/landmarks \
   -H "Content-Type: application/json" \
   -d '{"image_path": "/path/to/your/image.jpg"}' | jq
 ```
