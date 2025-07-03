@@ -344,8 +344,9 @@ class ApiApp:
             
             # predict the category of the clothing item
             category_id = 0
+            category_name = ""
             try:
-                category_id, _ = self.__category_predictor.pred(img=img, return_idx=True)
+                category_name, _, category_id = self.__category_predictor.pred(img=img)
                 msg = f"Category predictor predicted the {category_id=}."
                 print(msg)
                 self.__logger.log(msg)
@@ -424,7 +425,8 @@ class ApiApp:
             return jsonify({
                 'success': True,
                 'measurements': measurements,
-                'url': new_s3_link
+                'url': new_s3_link,
+                "category_name": category_name
             }), 200
         
         except Exception as e:

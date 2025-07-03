@@ -37,4 +37,5 @@ class ClothingCategoryPredictor:
         if return_idx:
             return int(sims.argmax()), sims.max().item()
 
-        return pred, sims.max().item()
+        # return category_name, probability, category_id
+        return pred, sims.max().item(), int(sims.argmax())
