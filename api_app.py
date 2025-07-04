@@ -312,7 +312,7 @@ class ApiApp:
             
             image_path  = data.get('image_path', '')
             image_url   = data.get('image_url', '')     # the removed mannequin image used to calculate measurements
-            # category_id = data.get('category_id', 1)
+            
             bg_img_url  = data.get('bg_img_url', '')    # original image to use as background, to draw the measurements
             
             # # Validate category_id
@@ -343,6 +343,7 @@ class ApiApp:
                 return jsonify({'success': False, 'error': "Could not load image for measurements"}), 500
             
             # predict the category of the clothing item
+            received_category_id = data.get('category_id', 0)
             category_id = 0
             category_name = ""
             try:
@@ -350,6 +351,8 @@ class ApiApp:
                 msg = f"Category predictor predicted the {category_id=}."
                 print(msg)
                 self.__logger.log(msg)
+                if category_id == 0 and received_category_id in (1,2):
+                    category_id = received_category_id
                 if category_id == 0:
                     msg = "Category predictor predicted the category \"other\"."
                     print(msg)
@@ -392,17 +395,24 @@ class ApiApp:
                     bg_img = self.__get_image_from_s3_link(bg_img_url)
                 if bg_img is None and s3_url:
                     bg_img = self.__get_image_from_s3_link(public_url=s3_url)
+                    warning_msg = f"No background image provided, using removed mannequin image"
+                    print(warning_msg)
+                    self.__logger.log(warning_msg)
                 if bg_img is None and image_url:
                     bg_img = self.__get_image_from_s3_link(public_url=image_url)
+                    warning_msg = f"No background image provided, using removed mannequin image"
+                    print(warning_msg)
+                    self.__logger.log(warning_msg)
                 if bg_img is None and not img is None:
                     bg_img = img
+                    warning_msg = f"No background image provided, using removed mannequin image"
+                    print(warning_msg)
+                    self.__logger.log(warning_msg)
                 
                 if bg_img is None: 
                     return jsonify({'success': False, 'error': "Could not load image for drawing"}), 500
                 
-                warning_msg = f"No background image provided, using removed mannequin image"
-                print(warning_msg)
-                self.__logger.log(warning_msg)
+                
             except:
                 error_msg = f"Failed to load background image, using removed mannequin image"
                 print(error_msg)
