@@ -26,7 +26,7 @@ CATEGORY_TO_COORDS: dict[int, dict[str, list[int]]] = {
     5:  {"width": [7, 13],  "length": [1, 9]},     # vest
     6:  {"width": [7, 13],  "length": [1, 9]},     # sling
     7:  {"width": [0, 2],   "length": [5, 6]},     # shorts
-    8:  {"width": [0, 2],   "length": [6, 8]},     # trousers
+    8:  {"width": [0, 2],   "length": [8, 10]},    # trousers
     9:  {"width": [0, 2],   "length": [0, 4]},     # skirt
     10: {"width": [11, 23], "length": [1, 16]},    # short-sleeve dress
     11: {"width": [15, 27], "length": [1, 20]},    # long-sleeve dress

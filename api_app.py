@@ -42,6 +42,7 @@ class ApiApp:
             self.__app.route('/measurements', methods=['POST'])(self.get_measurements)
             self.__app.route('/draw_measurements', methods=['POST'])(self.draw_measurements)
             self.__app.route('/health', methods=['GET'])(self.health_check)
+            self.__app.route('/get_category', methods=['POST'])(self.get_category)
             
             print("Flask app initialized successfully!")
             self.__logger.log("Flask app initialized successfully!")
@@ -147,8 +148,61 @@ class ApiApp:
             print(error_msg)
             self.__logger.log(error_msg)
             return None
+        
+    def __get_category_helper(self, image_url=""):
+        try:
+            img = self.__get_image_from_s3_link(public_url=image_url)
+            
+            if img is None:
+                error_msg = "Failed to load image from any source"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return None
+            
+            try:
+                _, _, category_id = self.__category_predictor.pred(img=img)
+                return category_id
+            except Exception as e:
+                error_msg = f"Failed to predict category: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return None
+            
+        except Exception as e:
+            error_msg = f"ERROR getting category: {str(e)}"
+            print(error_msg)
+            self.__logger.log(error_msg)
+            return None
 
     # ----- ENDPOINTS -----
+    def get_category(self):
+        try:
+            try:
+                data = request.get_json()
+                if data is None:
+                    return jsonify({'error': 'Invalid JSON or Content-Type not set to application/json'}), 400
+            except Exception as e:
+                error_msg = f"Failed to parse JSON: {str(e)}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                return jsonify({'error': 'Invalid JSON format'}), 400
+            
+            image_url = data.get('image_url', '')
+            if not image_url:
+                return jsonify({'error': 'image_url is required'}), 400
+
+            category_id = self.__get_category_helper(image_url=image_url)
+
+            return jsonify(category_id), 200
+
+        except Exception as e:
+            error_msg = f"Unexpected error in get_category: {str(e)}"
+            print(error_msg)
+            self.__logger.log(error_msg)
+            print(f"Traceback: {traceback.format_exc()}")
+            self.__logger.log(f"Traceback: {traceback.format_exc()}")
+            return jsonify({'error': 'Internal server error'}), 500
+
     def get_landmarks(self):
         try:
             # Parse JSON with error handling
@@ -351,9 +405,11 @@ class ApiApp:
                 msg = f"Category predictor predicted the {category_id=}."
                 print(msg)
                 self.__logger.log(msg)
-                if category_id == 0 and received_category_id in (1,2):
+                if received_category_id == 9:
+                    category_id = 9
+                elif category_id == 0 and received_category_id in (1,2):
                     category_id = received_category_id
-                if category_id == 0:
+                elif category_id == 0:
                     msg = "Category predictor predicted the category \"other\"."
                     print(msg)
                     self.__logger.log(msg)
