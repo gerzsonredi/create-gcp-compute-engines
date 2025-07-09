@@ -245,67 +245,103 @@ class ClothingMeasurer:
     def find_skirt_corners(
             self,
             img_bgr,
-            went_back=False,
-            top_band_px=75,
-            bottom_fraction=0.10) -> MeasurementResult:
+            went_back: bool = False,
+            *,
+            top_band_px: int = 75,
+            left_band_px: int = 200,
+            bottom_fraction: float = 0.10
+    ) -> MeasurementResult:
         """
-        Returns dict(tl, tr, bl, waist_px, length_px)
+        Detect waistband corners (tl_w, tr), a true hem tip (bl),
+        and a top-left hem anchor (tl_l) for an accurate skirt length.
 
-        Parameters
-        ----------
-        top_band_px : int
-            Vertical tolerance used to aggregate waistband contour points.
-        bottom_fraction : float  (0 < f ≤ 0.5)
-            Treat the lowest f·100 % of the contour’s y-range as the
-            “bottom strip”; the left-most point in that strip is bl.
-            0.10 ( = lowest 10 %) works well for heels/skirts 300–600 px tall.
+        Returns
+        -------
+        dict with keys
+            width          - waistband width in px
+            length         - skirt length in px
+            w1, w2         - waistband endpoints tl_w, tr
+            l1, l2         - length   endpoints tl_l, bl
+            measuring_mode - unchanged from your original code
         """
-        # -- binary mask of foreground ------------------------------------------------
+        # -- (1) foreground mask -------------------------------------------------------
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
-                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
-                                iterations=2)
+        mask = cv2.morphologyEx(
+            mask, cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+            iterations=2)
 
-        # -- largest contour ----------------------------------------------------------
+        # -- (2) largest contour -------------------------------------------------------
         cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not cnts:
-            raise ValueError("No contour found.")
+            raise ValueError("No contour found; check background threshold.")
         pts = cnts[np.argmax([cv2.contourArea(c) for c in cnts])].reshape(-1, 2)
 
-        # -- waistband corners --------------------------------------------------------
+        # -----------------------------------------------------------------------------#
+        # Waistband endpoints                                                          #
+        # -----------------------------------------------------------------------------#
         y_top = pts[:, 1].min()
         top_band = pts[pts[:, 1] <= y_top + top_band_px]
-        tl = tuple(int(x) for x in top_band[top_band[:, 0].argmin()])
-        tr = tuple(int(x) for x in top_band[top_band[:, 0].argmax()])
+        tl_w = tuple(int(x) for x in top_band[top_band[:, 0].argmin()])
+        tr   = tuple(int(x) for x in top_band[top_band[:, 0].argmax()])
 
-        # -- bottom-left corner -------------------------------------------------------
-        y_bot  = pts[:, 1].max()
-        band_y = y_top + (y_bot - y_top) * (1 - bottom_fraction)
-        bottom_strip = pts[pts[:, 1] >= band_y]
-        bl = tuple(int(x) for x in bottom_strip[bottom_strip[:, 0].argmin()])
+        measuring_mode = "recalculated" if went_back else "skirt_and_shorts"
+        if not went_back:
+            # If we are calculating shorts and skirts use this method
+            # -----------------------------------------------------------------------------#
+            # Bottom-left hem tip (same “bottom strip” trick)                               #
+            # -----------------------------------------------------------------------------#
+            y_bot  = pts[:, 1].max()
+            band_y = y_top + (y_bot - y_top) * (1 - bottom_fraction)
+            bottom_strip = pts[pts[:, 1] >= band_y]
+            bl = tuple(int(x) for x in bottom_strip[bottom_strip[:, 0].argmin()])
 
-        # -- distances ----------------------------------------------------------------
-        waist_px  = float(np.hypot(tr[0] - tl[0], tr[1] - tl[1]))
-        length_px = float(np.hypot(bl[0] - tl[0], bl[1] - tl[1]))
+            # -----------------------------------------------------------------------------#
+            # NEW - top-left hem anchor for length                                         #
+            # -----------------------------------------------------------------------------#
+            x_left = pts[:, 0].min()
+            left_edge = pts[pts[:, 0] <= x_left + left_band_px]
+            tl_l = tuple(int(x) for x in left_edge[left_edge[:, 1].argmin()])
 
-        # return dict(tl=tl, tr=tr, bl=bl,
-                    # waist_px=waist_px, length_px=length_px)
+            # -- (3) pixel measurements ----------------------------------------------------
+            waist_px  = float(np.hypot(tr [0] - tl_w[0], tr [1] - tl_w[1]))
+            length_px = float(np.hypot(bl[0] - tl_l[0], bl[1] - tl_l[1]))
 
-        if went_back:
-            measuring_mode = "recalculated"
-        else:
-            measuring_mode = "skirt_and_shorts"
+            # -- (4) output ----------------------------------------------------------------
+
+            return {
+                "width" : waist_px,
+                "length": length_px,
+                "w1"    : tl_w,
+                "w2"    : tr,
+                "l1"    : tl_l,
+                "l2"    : bl,
+                "measuring_mode": measuring_mode
+            }
         
-        return {
-            "width": waist_px,
-            "length": length_px,
-            "w1": tl,
-            "w2": tr,
-            "l1": tl,
-            "l2": bl,
-            "measuring_mode": measuring_mode
-        }
+        else:
+            # if we are recalculating something use the previous method
+            # -- bottom-left corner -------------------------------------------------------
+            tl = tl_w
+            y_bot  = pts[:, 1].max()
+            band_y = y_top + (y_bot - y_top) * (1 - bottom_fraction)
+            bottom_strip = pts[pts[:, 1] >= band_y]
+            bl = tuple(int(x) for x in bottom_strip[bottom_strip[:, 0].argmin()])
+
+            # -- distances ----------------------------------------------------------------
+            waist_px  = float(np.hypot(tr[0] - tl[0], tr[1] - tl[1]))
+            length_px = float(np.hypot(bl[0] - tl[0], bl[1] - tl[1]))
+
+            return {
+                "width": waist_px,
+                "length": length_px,
+                "w1": tl,
+                "w2": tr,
+                "l1": tl,
+                "l2": bl,
+                "measuring_mode": measuring_mode
+            }
     
     def filter_components(
         self,
@@ -456,13 +492,13 @@ class ClothingMeasurer:
             BGR colour of the guide lines.
         """
 
-        cv2.line(img_bgr, pts["w1"], pts["w2"], color, thickness=5)
+        cv2.line(img_bgr, pts["w1"], pts["w2"], color, thickness=10)
         # Draw strictly vertical segment
         if category_id in (7,8,9):
-            cv2.line(img_bgr, pts["l1"], pts["l2"], color, thickness=5)
+            cv2.line(img_bgr, pts["l1"], pts["l2"], color, thickness=10)
         else:
             l2_projected = (int(pts["l1"][0]), int(pts["l2"][1]))
-            cv2.line(img_bgr, pts["l1"], l2_projected, color, thickness=5)
+            cv2.line(img_bgr, pts["l1"], l2_projected, color, thickness=10)
         
         print("Successfully drew measurement lines on image")
         self.__logger.log("Successfully drew measurement lines on image")
