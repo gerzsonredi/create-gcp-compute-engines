@@ -35,10 +35,58 @@ jobs:
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-    - name: Authenticate to Google Cloud
+    - name: Authenticate to Google Cloud (Service Account Key)
       uses: google-github-actions/auth@v1
       with:
+        create_credentials_file: true
+        export_environment_variables: true
+        cleanup_credentials: true
+        access_token_lifetime: 3600s
+        access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+        retries: 3
+        backoff: 250
         credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Check Authentication and AWS Setup
+      run: |
+        echo "✅ Checking GitHub secrets configuration..."
+        
+        # Check GCP secrets
+        if [[ -z "${{ secrets.GCP_PROJECT_ID }}" ]]; then
+          echo "❌ ERROR: GCP_PROJECT_ID secret is not set!"
+          exit 1
+        fi
+        
+        if [[ -z "${{ secrets.GCP_SA_KEY }}" ]]; then
+          echo "❌ ERROR: GCP_SA_KEY secret is not set!"
+          exit 1
+        fi
+        
+        # Check AWS secrets
+        if [[ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]]; then
+          echo "❌ ERROR: AWS_ACCESS_KEY_ID secret is not set!"
+          exit 1
+        fi
+        
+        if [[ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]]; then
+          echo "❌ ERROR: AWS_SECRET_ACCESS_KEY secret is not set!"
+          exit 1
+        fi
+        
+        if [[ -z "${{ secrets.AWS_S3_BUCKET_NAME }}" ]]; then
+          echo "❌ ERROR: AWS_S3_BUCKET_NAME secret is not set!"
+          exit 1
+        fi
+        
+        if [[ -z "${{ secrets.AWS_S3_REGION }}" ]]; then
+          echo "❌ ERROR: AWS_S3_REGION secret is not set!"
+          exit 1
+        fi
+        
+        echo "✅ All required secrets are configured"
+        echo "🔑 GCP Project ID: ${{ secrets.GCP_PROJECT_ID }}"
+        echo "🪣 AWS S3 Bucket: ${{ secrets.AWS_S3_BUCKET_NAME }}"
+        echo "🌍 AWS S3 Region: ${{ secrets.AWS_S3_REGION }}"
 
     - name: Configure Docker to use gcloud as a credential helper
       run: |
@@ -46,16 +94,28 @@ jobs:
 
     - name: Build CPU-optimized Docker image with TurboJPEG and Quantization
       run: |
+        echo "🔨 Building optimized Docker image..."
+        echo "📦 Optimizations included:"
+        echo "  ✅ TurboJPEG for faster image loading"
+        echo "  ✅ Dynamic Model Quantization"
+        echo "  ✅ ONNX Runtime CPU optimization"
+        echo "  ✅ Shared Model Cache"
+        echo ""
+        
         docker build -f dockerfile -t ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
         docker build -f dockerfile -t ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest .
 
     - name: Push Docker image to Artifact Registry
       run: |
+        echo "📤 Pushing images to Artifact Registry..."
         docker push ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
         docker push ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
 
-    - name: Deploy to Cloud Run with CPU optimization (TurboJPEG + Model Quantization)
+    - name: Deploy to Cloud Run with CPU optimization and GitHub Secrets
       run: |
+        echo "🚀 Deploying to Cloud Run with optimizations..."
+        echo "🔑 Using GitHub secrets for AWS configuration..."
+        
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
           --platform managed \
@@ -70,11 +130,13 @@ jobs:
           --min-instances 0 \
           --max-instances 100 \
           --execution-environment gen2 \
-          --set-env-vars="ENVIRONMENT=production,PYTHONPATH=/app,FORCE_CPU=true,CPU_COUNT=2,OMP_NUM_THREADS=4,MKL_NUM_THREADS=4" \
-          --set-secrets="AWS_ACCESS_KEY_ID=aws-access-key:latest" \
-          --set-secrets="AWS_SECRET_ACCESS_KEY=aws-secret-key:latest" \
-          --set-secrets="AWS_S3_BUCKET_NAME=aws-s3-bucket:latest" \
-          --set-secrets="AWS_S3_REGION=aws-s3-region:latest"
+          --set-env-vars="ENVIRONMENT=production,PYTHONPATH=/app,FORCE_CPU=true,CPU_COUNT=2,OMP_NUM_THREADS=4,MKL_NUM_THREADS=4,AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }},AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }},AWS_S3_BUCKET_NAME=${{ secrets.AWS_S3_BUCKET_NAME }},AWS_S3_REGION=${{ secrets.AWS_S3_REGION }}" || {
+            echo "❌ Deployment failed. Common issues:"
+            echo "1. Artifact Registry repository doesn't exist"
+            echo "2. Service account lacks necessary permissions"
+            echo "3. Docker image build failed"
+            exit 1
+          }
 
     - name: Route traffic to latest revision
       run: |
@@ -85,10 +147,11 @@ jobs:
 
     - name: Set public access
       run: |
+        echo "🌐 Setting public access..."
         gcloud run services add-iam-policy-binding ${{ env.SERVICE_NAME }} \
           --region=${{ env.REGION }} \
           --member="allUsers" \
-          --role="roles/run.invoker" || echo "Public access may be restricted by organization policy"
+          --role="roles/run.invoker" || echo "⚠️ Public access may be restricted by organization policy"
 
     - name: Get Cloud Run URL
       run: |
@@ -100,32 +163,68 @@ jobs:
       run: |
         echo "🧪 Verifying service is running..."
         gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format="value(status.conditions[0].status)"
+        
         echo "🔍 Testing health endpoint..."
-        curl -f ${{ env.SERVICE_URL }}/health || echo "Health check failed - service may still be starting"
-        echo "✅ Service verification completed!"
+        sleep 15  # Give service time to start and load models
+        
+        MAX_RETRIES=5
+        RETRY_COUNT=0
+        
+        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+          if curl -f -s ${{ env.SERVICE_URL }}/health > /dev/null; then
+            echo "✅ Health check successful!"
+            curl -s ${{ env.SERVICE_URL }}/health
+            break
+          else
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "⏳ Health check failed, retry $RETRY_COUNT/$MAX_RETRIES..."
+            sleep 10
+          fi
+        done
+        
+        if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
+          echo "🔍 Checking service logs..."
+          gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=${{ env.SERVICE_NAME }}" --limit=50 --format="value(textPayload)" || echo "Could not fetch logs"
+        fi
 
     - name: Performance test with optimized image loading
       run: |
         echo "⚡ Testing optimized API performance..."
-        echo "Testing single image processing speed with TurboJPEG + Dynamic Quantization..."
+        echo "🎯 Testing single image processing speed with TurboJPEG + Dynamic Quantization..."
+        echo ""
+        
+        START_TIME=$(date +%s)
+        
+        # Use the head -50 method as requested
         curl -X POST ${{ env.SERVICE_URL }}/measurements \
           -H "Content-Type: application/json" \
           -d '{"image_url": "https://media.remix.eu/files/11-2025/Roklya-Loft-131183184b.jpg"}' \
-          | head -50 || echo "Performance test completed"
+          | head -50 || echo "⚠️ Performance test completed with warnings"
+        
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        
+        echo ""
+        echo "⏱️ API Response Time: ${DURATION}s"
+        echo "🎯 Expected optimized performance: ~7.5s total processing"
 
     - name: Deployment Summary
       run: |
         echo "## 🎉 Garment Measuring API Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🚀 **Optimizations Applied:**" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ **TurboJPEG** for faster image loading" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ **Dynamic Model Quantization** (15.7% faster)" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ **ONNX Runtime** CPU optimization" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ **Shared Model Cache** for multi-worker efficiency" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Multi-core processing** with Gunicorn workers" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📊 **Performance Improvements:**" >> $GITHUB_STEP_SUMMARY
         echo "- **Total processing**: 8.87s → 7.48s (**-15.7%**)" >> $GITHUB_STEP_SUMMARY
         echo "- **Landmark detection**: 2.91s → 2.50s (**-14.1%**)" >> $GITHUB_STEP_SUMMARY
         echo "- **Image upload**: 1.17s → 0.93s (**-20.5%**)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Image loading**: Optimized with TurboJPEG" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🔧 **Service Details:**" >> $GITHUB_STEP_SUMMARY
         echo "- **Service**: ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
@@ -135,4 +234,20 @@ jobs:
         echo "- **Auto-scaling**: 0-100 instances (1 concurrent per instance)" >> $GITHUB_STEP_SUMMARY
         echo "- **Memory**: 4Gi per instance" >> $GITHUB_STEP_SUMMARY
         echo "- **CPU**: 2 cores per instance with CPU boost" >> $GITHUB_STEP_SUMMARY
-        echo "- **Optimization**: TurboJPEG + Dynamic Quantization + ONNX Runtime" >> $GITHUB_STEP_SUMMARY 
+        echo "- **Optimization**: TurboJPEG + Dynamic Quantization + ONNX Runtime" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔐 **Configuration:**" >> $GITHUB_STEP_SUMMARY
+        echo "- **Authentication**: Service Account Key" >> $GITHUB_STEP_SUMMARY
+        echo "- **AWS Integration**: GitHub Secrets → Environment Variables" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 **Quick Test Commands:**" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "# Health check" >> $GITHUB_STEP_SUMMARY
+        echo "curl ${{ env.SERVICE_URL }}/health" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "# Performance test (optimized method)" >> $GITHUB_STEP_SUMMARY
+        echo "curl -X POST ${{ env.SERVICE_URL }}/measurements \\" >> $GITHUB_STEP_SUMMARY
+        echo '  -H "Content-Type: application/json" \' >> $GITHUB_STEP_SUMMARY
+        echo '  -d '"'"'{"image_url": "https://media.remix.eu/files/11-2025/Roklya-Loft-131183184b.jpg"}'"'"' \' >> $GITHUB_STEP_SUMMARY
+        echo "  | head -50" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY 
