@@ -11,10 +11,10 @@ class EVFSAMLogger:
         CONFIG_FILE = "configs/config_general_aws.json"
         with open(CONFIG_FILE, "r") as jf:
             self.__config = json.load(jf)
-        self.bucket_name            = self.__config.get("LOGGING_BUCKET")
-        self.aws_access_key_id      = self.__config.get("ACCES_KEY_ARTIFACTS")
-        self.aws_secret_access_key  = self.__config.get("SECRET_KEY_ARTIFACTS")
-        self.aws_s3_region          = self.__config.get("REGION")
+        self.bucket_name            = self.__config.get("AWS_S3_BUCKET_NAME")
+        self.aws_access_key_id      = self.__config.get("AWS_ACCESS_KEY_ID")
+        self.aws_secret_access_key  = self.__config.get("AWS_SECRET_ACCESS_KEY")
+        self.aws_s3_region          = self.__config.get("AWS_S3_REGION")
         self.s3_client = None
         if all([self.aws_access_key_id, self.aws_secret_access_key, self.aws_s3_region]):
             self.s3_client = boto3.client(

@@ -6,25 +6,28 @@ import os
 bind = "0.0.0.0:5003"
 backlog = 2048
 
-# Worker processes - EXPLICITLY 1 WORKER FOR EVF-SAM MODEL
-workers = 1  # CRITICAL: Only 1 worker to avoid memory conflicts with large model
+# Worker processes - Updated to use multiple cores
+cpu_count = multiprocessing.cpu_count()
+workers = min(cpu_count, 8)  # Use up to 8 workers to balance memory usage
+print(f"Configuring gunicorn with {workers} workers for {cpu_count} CPU cores")
+
 worker_class = "sync"
 worker_connections = 1000
 timeout = 600  # 10 minutes for model inference (increased for CPU processing)
 keepalive = 5
 
 # Restart workers after fewer requests to prevent memory buildup
-max_requests = 100  # Reduced from 1000 to prevent memory leaks
-max_requests_jitter = 10  # Reduced jitter
+max_requests = 50  # Reduced to prevent memory issues with multiple workers
+max_requests_jitter = 10
 
 # Logging
 accesslog = "-"  # Log to stdout
 errorlog = "-"   # Log to stderr
 loglevel = "info"
-access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s [Worker: %(p)s]'
 
 # Process naming
-proc_name = "evf-sam-api"
+proc_name = "clothing-measurement-api"
 
 # Server mechanics
 daemon = False
@@ -32,18 +35,20 @@ pidfile = None
 tmp_upload_dir = None
 
 # Worker timeout for graceful shutdown
-graceful_timeout = 60  # Increased timeout for model cleanup
+graceful_timeout = 60
 
-# Preload application for better memory usage
-preload_app = False  # Changed to False to avoid model loading issues
+# Preload application for better memory usage (disabled for model loading)
+preload_app = False
 
 # Environment variables
 raw_env = [
     f"PYTHONPATH={os.getenv('PYTHONPATH', '/app')}",
+    f"OMP_NUM_THREADS=2",  # Limit OpenMP threads per worker
+    f"MKL_NUM_THREADS=2",  # Limit MKL threads per worker
 ]
 
 def when_ready(server):
-    server.log.info("EVF-SAM API server is ready. Listening on %s", server.address)
+    server.log.info(f"Clothing Measurement API server ready with {workers} workers on {cpu_count} CPU cores")
 
 def worker_int(worker):
     worker.log.info("Worker received INT or QUIT signal")

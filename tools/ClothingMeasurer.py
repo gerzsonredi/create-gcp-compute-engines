@@ -4,6 +4,9 @@ import numpy as np
 from numpy.typing import NDArray
 from tools.constants import CATEGORY_TO_COORDS
 from typing import TypedDict
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import time
 
 
 class MeasurementResult(TypedDict):
@@ -16,11 +19,25 @@ class MeasurementResult(TypedDict):
     measuring_mode: str
 
 
+def parallel_contour_processing(contour_data):
+    """Helper function for parallel contour processing"""
+    contour, operation = contour_data
+    if operation == 'area':
+        return cv2.contourArea(contour)
+    elif operation == 'perimeter':
+        return cv2.arcLength(contour, True)
+    elif operation == 'boundingRect':
+        return cv2.boundingRect(contour)
+    return None
+
+
 class ClothingMeasurer:
     def __init__(self, logger):
         self.__logger = logger
-        print("ClothingMeasurer initialized successfully!")
-        self.__logger.log("ClothingMeasurer initialized successfully!")
+        # Get optimal number of processes (limit to avoid memory issues)
+        self.max_workers = min(mp.cpu_count(), 4)
+        print(f"ClothingMeasurer initialized with {self.max_workers} max workers!")
+        self.__logger.log(f"ClothingMeasurer initialized with {self.max_workers} max workers!")
 
     def dumb_measure(
     self,
@@ -422,6 +439,14 @@ class ClothingMeasurer:
             (width_in_px, length_in_px, width coordinates, length coordinates)
         """
         cleaned_img = self.filter_components(img_bgr, keep_largest=True)
+        
+        # For now, use image-based measurements for all categories for better reliability
+        print(f"Using image-based measurement for category {category_id} due to unreliable landmarks")
+        self.__logger.log(f"Using image-based measurement for category {category_id} due to unreliable landmarks")
+        return self.find_skirt_corners(cleaned_img)
+        
+        # Original landmark-based code (commented out for now)
+        """
         if category_id in (7,9):
             return self.find_skirt_corners(cleaned_img)
         try:
@@ -432,9 +457,27 @@ class ClothingMeasurer:
             self.__logger.log(f"ERROR: {error_msg}")
             raise ValueError(error_msg) from exc
 
+        # Debug: Print landmark indices being used
+        print(f"Using landmarks for category {category_id}: width={indices['width']}, length={indices['length']}")
+        self.__logger.log(f"Using landmarks for category {category_id}: width={indices['width']}, length={indices['length']}")
+
         # --- Width -------------------------------------------------------------
         w_idx1, w_idx2 = indices["width"]
         w1, w2 = pts[[w_idx1, w_idx2]].astype(int)
+        
+        # Debug: Print raw landmark coordinates
+        print(f"Raw width landmarks: w1({w_idx1})={w1}, w2({w_idx2})={w2}")
+        self.__logger.log(f"Raw width landmarks: w1({w_idx1})={w1}, w2({w_idx2})={w2}")
+
+        # Validate landmarks are reasonable (not at image edges or origin)
+        img_height, img_width = img_bgr.shape[:2]
+        
+        # If landmarks are at image edges or (0,0), try to use image-based measurements instead
+        if (w1[0] < 10 or w1[0] > img_width-10 or w1[1] < 10 or w1[1] > img_height-10 or
+            w2[0] < 10 or w2[0] > img_width-10 or w2[1] < 10 or w2[1] > img_height-10):
+            print("WARNING: Width landmarks appear to be at image edges, falling back to mask-based measurement")
+            self.__logger.log("WARNING: Width landmarks appear to be at image edges, falling back to mask-based measurement")
+            return self.find_skirt_corners(cleaned_img)
 
         # y_mid = int(np.mean((w1[1], w2[1]))) 
         w1 = (int(w1[0]), int(w1[1]))
@@ -445,6 +488,10 @@ class ClothingMeasurer:
         # --- Length ------------------------------------------------------------
         l_idx1, l_idx2 = indices["length"]
         l1, l2 = pts[[l_idx1, l_idx2]].astype(int)
+        
+        # Debug: Print raw length landmarks
+        print(f"Raw length landmarks: l1({l_idx1})={l1}, l2({l_idx2})={l2}")
+        self.__logger.log(f"Raw length landmarks: l1({l_idx1})={l1}, l2({l_idx2})={l2}")
 
         measurement_mode = "landmark"
         if category_id in (7, 8, 9):
@@ -470,6 +517,7 @@ class ClothingMeasurer:
             "measuring_mode": measurement_mode
         }
         return result
+        """
 
     def draw_lines(
             self,
@@ -477,7 +525,7 @@ class ClothingMeasurer:
             pts: MeasurementResult,
             *,
             category_id: int = 1,
-            color: tuple[int, int, int] = (0, 255, 0)
+            color: tuple[int, int, int] = (0, 255, 0)  # Back to green
         ) -> None:
         """
         Parameters
@@ -491,14 +539,41 @@ class ClothingMeasurer:
         color
             BGR colour of the guide lines.
         """
-
-        cv2.line(img_bgr, pts["w1"], pts["w2"], color, thickness=10)
-        # Draw strictly vertical segment
-        if category_id in (7,8,9):
-            cv2.line(img_bgr, pts["l1"], pts["l2"], color, thickness=10)
-        else:
-            l2_projected = (int(pts["l1"][0]), int(pts["l2"][1]))
-            cv2.line(img_bgr, pts["l1"], l2_projected, color, thickness=10)
         
-        print("Successfully drew measurement lines on image")
-        self.__logger.log("Successfully drew measurement lines on image")
+        # Validate measurement points are within image bounds
+        height, width = img_bgr.shape[:2]
+        
+        def clamp_point(point):
+            x, y = point
+            x = max(0, min(x, width - 1))
+            y = max(0, min(y, height - 1))
+            return (int(x), int(y))
+        
+        # Clamp all points to image boundaries
+        w1 = clamp_point(pts["w1"])
+        w2 = clamp_point(pts["w2"])
+        l1 = clamp_point(pts["l1"])
+        l2 = clamp_point(pts["l2"])
+        
+        # Draw width line with moderate thickness
+        cv2.line(img_bgr, w1, w2, (0, 255, 0), thickness=5)  # Green for width
+        
+        # Draw length line
+        if category_id in (7,8,9):
+            cv2.line(img_bgr, l1, l2, (255, 0, 0), thickness=5)  # Blue for length
+        else:
+            l2_projected = (l1[0], l2[1])  # Vertical projection
+            l2_projected = clamp_point(l2_projected)
+            cv2.line(img_bgr, l1, l2_projected, (255, 0, 0), thickness=5)
+        
+        # Add small circles at endpoints
+        cv2.circle(img_bgr, w1, 8, (0, 0, 255), -1)  # Red circles
+        cv2.circle(img_bgr, w2, 8, (0, 0, 255), -1)
+        cv2.circle(img_bgr, l1, 8, (255, 255, 0), -1)  # Yellow circles
+        if category_id in (7,8,9):
+            cv2.circle(img_bgr, l2, 8, (255, 255, 0), -1)
+        else:
+            cv2.circle(img_bgr, l2_projected, 8, (255, 255, 0), -1)
+        
+        print(f"Drew measurement lines: W({w1}-{w2}), L({l1}-{l2 if category_id in (7,8,9) else l2_projected})")
+        self.__logger.log(f"Drew measurement lines: W({w1}-{w2}), L({l1}-{l2 if category_id in (7,8,9) else l2_projected})")

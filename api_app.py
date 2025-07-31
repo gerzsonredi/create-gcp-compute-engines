@@ -5,36 +5,45 @@ from tools.ClothingMeasurer import ClothingMeasurer
 from tools.ClothingCategoryPredictor import ClothingCategoryPredictor
 from tools.S3Loader import S3Loader
 from tools.logger import EVFSAMLogger
+from tools.performance_monitor import PerformanceMonitor, perf_monitor
+from tools.turbojpeg_loader import turbojpeg_loader
 
 class ApiApp:
     def __init__(self):
         try:
             self.__logger = EVFSAMLogger()
+            self.__perf_monitor = PerformanceMonitor(self.__logger)
+            
             print("Starting Flask app...")
             self.__logger.log("Starting Flask app...")
             
             self.__app = Flask(__name__, static_folder='', static_url_path='')
             self.__app.secret_key = 'my-secret-key'
 
-            print("Loading S3Loader...")
-            self.__logger.log("Loading S3Loader...")
-            self.__s3loader = S3Loader(logger=self.__logger)
+            with self.__perf_monitor.timer("S3Loader_initialization"):
+                print("Loading S3Loader...")
+                self.__logger.log("Loading S3Loader...")
+                self.__s3loader = S3Loader(logger=self.__logger)
             
-            print("Loading HRNet model...")
-            self.__logger.log("Loading HRNet model...")
-            state = self.__s3loader.load_hrnet_model()
+            with self.__perf_monitor.timer("HRNet_model_download"):
+                print("Loading HRNet model...")
+                self.__logger.log("Loading HRNet model...")
+                state = self.__s3loader.load_hrnet_model()
             
-            print("Initializing ClothingLandmarkPredictor...")
-            self.__logger.log("Initializing ClothingLandmarkPredictor...")
-            self.__landmark_predictor = ClothingLandmarkPredictor(logger=self.__logger, state=state)
+            with self.__perf_monitor.timer("ClothingLandmarkPredictor_initialization"):
+                print("Initializing ClothingLandmarkPredictor...")
+                self.__logger.log("Initializing ClothingLandmarkPredictor...")
+                self.__landmark_predictor = ClothingLandmarkPredictor(logger=self.__logger, state=state)
             
-            print("Initializing ClothingMeasurer...")
-            self.__logger.log("Initializing ClothingMeasurer...")
-            self.__measurer = ClothingMeasurer(logger=self.__logger)
+            with self.__perf_monitor.timer("ClothingMeasurer_initialization"):
+                print("Initializing ClothingMeasurer...")
+                self.__logger.log("Initializing ClothingMeasurer...")
+                self.__measurer = ClothingMeasurer(logger=self.__logger)
 
-            print("Initializing ClothingCategoryPredictor...")
-            self.__logger.log("Initializing ClothingCategoryPredictor...")
-            self.__category_predictor = ClothingCategoryPredictor(logger=self.__logger)
+            with self.__perf_monitor.timer("ClothingCategoryPredictor_initialization"):
+                print("Initializing ClothingCategoryPredictor...")
+                self.__logger.log("Initializing ClothingCategoryPredictor...")
+                self.__category_predictor = ClothingCategoryPredictor(logger=self.__logger)
 
             print("Setting up routes...")
             self.__logger.log("Setting up routes...")
@@ -43,6 +52,7 @@ class ApiApp:
             self.__app.route('/draw_measurements', methods=['POST'])(self.draw_measurements)
             self.__app.route('/health', methods=['GET'])(self.health_check)
             self.__app.route('/get_category', methods=['POST'])(self.get_category)
+            self.__app.route('/performance', methods=['GET'])(self.get_performance_stats)
             
             print("Flask app initialized successfully!")
             self.__logger.log("Flask app initialized successfully!")
@@ -160,7 +170,7 @@ class ApiApp:
                 return None
             
             try:
-                _, _, category_id = self.__category_predictor.pred(img=img)
+                category_id, category_name, confidence = self.__category_predictor.predict_category(img)
                 return category_id
             except Exception as e:
                 error_msg = f"Failed to predict category: {str(e)}"
@@ -353,146 +363,164 @@ class ApiApp:
 
     def get_measurements(self):
         try:
-            # Parse JSON with error handling
-            try:
-                data = request.get_json()
-                if data is None:
-                    return jsonify({'error': 'Invalid JSON or Content-Type not set to application/json'}), 400
-            except Exception as e:
-                error_msg = f"Failed to parse JSON: {str(e)}"
-                print(error_msg)
-                self.__logger.log(error_msg)
-                return jsonify({'error': 'Invalid JSON format'}), 400
+            # Reset session for new measurement request
+            self.__perf_monitor.reset_session()
             
-            image_path  = data.get('image_path', '')
-            image_url   = data.get('image_url', '')     # the removed mannequin image used to calculate measurements
-            
-            bg_img_url  = data.get('bg_img_url', '')    # original image to use as background, to draw the measurements
-            
-            # # Validate category_id
-            # try:
-            #     category_id = int(category_id)
-            # except (ValueError, TypeError):
-            #     return jsonify({'error': 'category_id must be an integer'}), 400
-            
-            if not image_path and not image_url:
-                return jsonify({'error': 'Either image_path or image_url is required'}), 400
-            
-            result = self.__get_landmarks_helper(image_url=image_url, image_path=image_path)
-            if result is None:
-                return jsonify({'success': False, 'error': "Failed to get landmarks"}), 500
+            with self.__perf_monitor.timer("total_request_processing"):
+                # Parse JSON with error handling
+                with self.__perf_monitor.timer("json_parsing"):
+                    try:
+                        data = request.get_json()
+                        if data is None:
+                            return jsonify({'error': 'Invalid JSON or Content-Type not set to application/json'}), 400
+                    except Exception as e:
+                        error_msg = f"Failed to parse JSON: {str(e)}"
+                        print(error_msg)
+                        self.__logger.log(error_msg)
+                        return jsonify({'error': 'Invalid JSON format'}), 400
                 
-            landmarks, s3_url = result
-            if landmarks is None:
-                return jsonify({'success': False, 'error': "Could not detect landmarks in image"}), 400
-            
-            # Get image for measurements
-            img = None
-            if s3_url:
-                img = self.__get_image_from_s3_link(s3_url)
-            if img is None and image_url:
-                img = self.__get_image_from_s3_link(public_url=image_url)
-            
-            if img is None:
-                return jsonify({'success': False, 'error': "Could not load image for measurements"}), 500
-            
-            # predict the category of the clothing item
-            received_category_id = data.get('category_id', 0)
-            category_id = 0
-            category_name = ""
-            try:
-                category_name, _, category_id = self.__category_predictor.pred(img=img)
-                msg = f"Category predictor predicted the {category_id=}."
-                print(msg)
-                self.__logger.log(msg)
-                if received_category_id == 9:
-                    category_id = 9
-                elif category_id == 0 and received_category_id in (1,2):
-                    category_id = received_category_id
-                elif category_id == 0:
-                    msg = "Category predictor predicted the category \"other\"."
-                    print(msg)
-                    self.__logger.log(msg)
-                    return jsonify({'success': True, 'message': msg, "url": image_url}), 200
-            except Exception as e:
-                error_msg = f"Failed to detect category from the image: {str(e)}"
-                print(error_msg)
-                self.__logger.log(error_msg)
-                return jsonify({'success': False, 'error': "Failed to detect category!"}), 400
+                image_path  = data.get('image_path', '')
+                image_url   = data.get('image_url', '')     # the removed mannequin image used to calculate measurements
+                bg_img_url  = data.get('bg_img_url', '')    # original image to use as background, to draw the measurements
+                
+                if not image_path and not image_url:
+                    return jsonify({'error': 'Either image_path or image_url is required'}), 400
+                
+                # Get landmarks with timing
+                with self.__perf_monitor.timer("landmark_detection"):
+                    result = self.__get_landmarks_helper(image_url=image_url, image_path=image_path)
+                    if result is None:
+                        return jsonify({'success': False, 'error': "Failed to get landmarks"}), 500
+                        
+                    landmarks, s3_url = result
+                    if landmarks is None:
+                        return jsonify({'success': False, 'error': "Could not detect landmarks in image"}), 400
+                
+                # Get image for measurements with timing
+                with self.__perf_monitor.timer("image_loading"):
+                    img = None
+                    if s3_url:
+                        img = self.__get_image_from_s3_link(s3_url)
+                    if img is None and image_url:
+                        img = self.__get_image_from_s3_link(public_url=image_url)
+                    
+                    if img is None:
+                        return jsonify({'success': False, 'error': "Could not load image for measurements"}), 500
+                
+                # Category prediction with timing
+                with self.__perf_monitor.timer("category_prediction"):
+                    received_category_id = data.get('category_id', 0)
+                    category_id = 0
+                    category_name = ""
+                    try:
+                        category_id, category_name, confidence = self.__category_predictor.predict_category(img)
+                        msg = f"Category predictor predicted the {category_id=}."
+                        print(msg)
+                        self.__logger.log(msg)
+                        if received_category_id == 9:
+                            category_id = 9
+                        elif category_id == 0 and received_category_id in (1,2):
+                            category_id = received_category_id
+                        elif category_id == 0:
+                            msg = "Category predictor predicted the category \"other\"."
+                            print(msg)
+                            self.__logger.log(msg)
+                            return jsonify({'success': True, 'message': msg, "url": image_url}), 200
+                    except Exception as e:
+                        error_msg = f"Failed to detect category from the image: {str(e)}"
+                        print(error_msg)
+                        self.__logger.log(error_msg)
+                        return jsonify({'success': False, 'error': "Failed to detect category!"}), 400
 
-            # Filter by category with error handling
-            try:
-                category_landmarks = self.__landmark_predictor.filter_by_category(landmarks, category_id)
-            except Exception as e:
-                error_msg = f"Failed to filter landmarks by category {category_id}: {str(e)}"
-                print(error_msg)
-                self.__logger.log(error_msg)
-                return jsonify({'success': False, 'error': f"Invalid category_id: {category_id}"}), 400
-            
-            # Calculate measurements with error handling
-            try:
-                measurements = self.__measurer.calculate_measurements(img, category_landmarks, category_id=category_id)
-            except Exception as e:
-                error_msg = f"Failed to calculate measurements: {str(e)}"
-                print(error_msg)
-                self.__logger.log(error_msg)
-                return jsonify({'success': False, 'error': "Failed to calculate measurements"}), 500
-            
-            if measurements is None:
-                return jsonify({'success': False, 'error': "Could not calculate measurements from landmarks"}), 400
-            
-            print(f"Measurement keys: {list(measurements.keys())}")
-            self.__logger.log(f"Measurement keys: {list(measurements.keys())}")
+                # Filter landmarks by category with timing
+                with self.__perf_monitor.timer("landmark_filtering"):
+                    try:
+                        category_landmarks = self.__landmark_predictor.filter_by_category(landmarks, category_id)
+                    except Exception as e:
+                        error_msg = f"Failed to filter landmarks by category {category_id}: {str(e)}"
+                        print(error_msg)
+                        self.__logger.log(error_msg)
+                        return jsonify({'success': False, 'error': f"Invalid category_id: {category_id}"}), 400
+                
+                # Calculate measurements with timing
+                with self.__perf_monitor.timer("measurement_calculation"):
+                    try:
+                        measurements = self.__measurer.calculate_measurements(img, category_landmarks, category_id=category_id)
+                    except Exception as e:
+                        error_msg = f"Failed to calculate measurements: {str(e)}"
+                        print(error_msg)
+                        self.__logger.log(error_msg)
+                        return jsonify({'success': False, 'error': "Failed to calculate measurements"}), 500
+                    
+                    if measurements is None:
+                        return jsonify({'success': False, 'error': "Could not calculate measurements from landmarks"}), 400
+                    
+                    print(f"Measurement keys: {list(measurements.keys())}")
+                    self.__logger.log(f"Measurement keys: {list(measurements.keys())}")
 
-            # Draw lines on background image with error handling
-            bg_img = None
-            try:
-                if bg_img_url:
-                    bg_img = self.__get_image_from_s3_link(bg_img_url)
-                if bg_img is None and s3_url:
-                    bg_img = self.__get_image_from_s3_link(public_url=s3_url)
-                    warning_msg = f"No background image provided, using removed mannequin image"
-                    print(warning_msg)
-                    self.__logger.log(warning_msg)
-                if bg_img is None and image_url:
-                    bg_img = self.__get_image_from_s3_link(public_url=image_url)
-                    warning_msg = f"No background image provided, using removed mannequin image"
-                    print(warning_msg)
-                    self.__logger.log(warning_msg)
-                if bg_img is None and not img is None:
-                    bg_img = img
-                    warning_msg = f"No background image provided, using removed mannequin image"
-                    print(warning_msg)
-                    self.__logger.log(warning_msg)
-                
-                if bg_img is None: 
-                    return jsonify({'success': False, 'error': "Could not load image for drawing"}), 500
-                
-                
-            except:
-                error_msg = f"Failed to load background image, using removed mannequin image"
-                print(error_msg)
-                self.__logger.log(error_msg)
-                bg_img = img
-                
-            try:
-                self.__measurer.draw_lines(bg_img, measurements, category_id=category_id)
-            except Exception as e:
-                error_msg = f"Failed to draw measurement lines: {str(e)}"
-                print(error_msg)
-                self.__logger.log(error_msg)
-                # Continue without drawing - not critical
+                # Background image loading and line drawing with timing
+                with self.__perf_monitor.timer("background_image_processing"):
+                    bg_img = None
+                    try:
+                        if bg_img_url:
+                            bg_img = self.__get_image_from_s3_link(bg_img_url)
+                        if bg_img is None and s3_url:
+                            bg_img = self.__get_image_from_s3_link(public_url=s3_url)
+                            warning_msg = f"No background image provided, using removed mannequin image"
+                            print(warning_msg)
+                            self.__logger.log(warning_msg)
+                        if bg_img is None and image_url:
+                            bg_img = self.__get_image_from_s3_link(public_url=image_url)
+                            warning_msg = f"No background image provided, using removed mannequin image"
+                            print(warning_msg)
+                            self.__logger.log(warning_msg)
+                        if bg_img is None and not img is None:
+                            bg_img = img
+                            warning_msg = f"No background image provided, using removed mannequin image"
+                            print(warning_msg)
+                            self.__logger.log(warning_msg)
+                        
+                        if bg_img is None: 
+                            return jsonify({'success': False, 'error': "Could not load image for drawing"}), 500
+                        
+                    except:
+                        error_msg = f"Failed to load background image, using removed mannequin image"
+                        print(error_msg)
+                        self.__logger.log(error_msg)
+                        bg_img = img
 
-            # Upload result image with error handling
-            new_s3_link = self.__upload_image_to_s3(image_data=bg_img, predicted=True)
-            if new_s3_link is None:
-                self.__logger.log("Failed to upload result image to S3, continuing without URL")
+                # Draw measurement lines with timing
+                with self.__perf_monitor.timer("measurement_line_drawing"):
+                    try:
+                        self.__measurer.draw_lines(bg_img, measurements, category_id=category_id)
+                    except Exception as e:
+                        error_msg = f"Failed to draw measurement lines: {str(e)}"
+                        print(error_msg)
+                        self.__logger.log(error_msg)
+                        # Continue without drawing - not critical
+
+                # Upload result image with timing
+                with self.__perf_monitor.timer("result_image_upload"):
+                    new_s3_link = self.__upload_image_to_s3(image_data=bg_img, predicted=True)
+                    if new_s3_link is None:
+                        self.__logger.log("Failed to upload result image to S3, continuing without URL")
+
+            # Print performance report
+            self.__perf_monitor.print_performance_report()
+            
+            # Get performance summary for response
+            perf_summary = self.__perf_monitor.get_current_session_summary()
 
             return jsonify({
                 'success': True,
                 'measurements': measurements,
                 'url': new_s3_link,
-                "category_name": category_name
+                "category_name": category_name,
+                'performance_timing': {
+                    'total_time_seconds': perf_summary['total_session_time'],
+                    'subtask_timings': perf_summary['subtasks'],
+                    'subtask_percentages': perf_summary['subtask_percentages']
+                }
             }), 200
         
         except Exception as e:
@@ -508,6 +536,39 @@ class ApiApp:
         self.__logger.log("Health check endpoint called")
         return jsonify({'status': 'healthy', 'message': 'API is running'}), 200
     
+    # ----- PERFORMANCE MONITORING -----
+    def get_performance_stats(self):
+        """New endpoint to get performance statistics"""
+        try:
+            stats = self.__perf_monitor.get_stats()
+            current_session = self.__perf_monitor.get_current_session_summary()
+            
+            # Add model cache statistics to performance endpoint
+            from tools.model_cache import model_cache
+            cache_stats = model_cache.get_stats()
+            
+            performance_data = {
+                'success': True,
+                'overall_stats': stats,
+                'current_session': current_session,
+                'message': 'Performance statistics retrieved successfully'
+            }
+            
+            performance_data['model_cache'] = {
+                'cache_count': cache_stats['cache_count'],
+                'total_size_mb': round(cache_stats['total_size_mb'], 2),
+                'max_size_gb': cache_stats['max_size_gb'],
+                'utilization_percent': round(cache_stats['utilization_percent'], 1)
+            }
+            
+            return jsonify(performance_data)
+            
+        except Exception as e:
+            error_msg = f"Failed to get performance stats: {str(e)}"
+            print(error_msg)
+            self.__logger.log(error_msg)
+            return jsonify({'error': 'Failed to retrieve performance stats'}), 500
+
 if __name__ == '__main__':
     try:
         api_app = ApiApp()

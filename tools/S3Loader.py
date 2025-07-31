@@ -17,10 +17,10 @@ class S3Loader:
         Takes a public url as argument, and uploads image to AWS S3 bucket.
         Returns public s3 url
         """
-        AWS_ACCESS_KEY_ID       = self.__config.get("ACCES_KEY_ARTIFACTS", "")
-        AWS_SECRET_ACCESS_KEY   = self.__config.get("SECRET_KEY_ARTIFACTS", "")
-        BUCKET_NAME             = self.__config.get("BUCKET_NAME", "")
-        REGION                  = self.__config.get("REGION", "")
+        AWS_ACCESS_KEY_ID       = self.__config.get("AWS_ACCESS_KEY_ID", "")
+        AWS_SECRET_ACCESS_KEY   = self.__config.get("AWS_SECRET_ACCESS_KEY", "")
+        BUCKET_NAME             = self.__config.get("AWS_S3_BUCKET_NAME", "")
+        REGION                  = self.__config.get("AWS_S3_REGION", "")
         
         session = boto3.Session(
             aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -161,10 +161,10 @@ class S3Loader:
         """
         Helper function to load HRNet model from S3.
         """
-        AWS_ACCESS_KEY_ID       = self.__config.get("ACCES_KEY_ARTIFACTS", "")
-        AWS_SECRET_ACCESS_KEY   = self.__config.get("SECRET_KEY_ARTIFACTS", "")
-        BUCKET_NAME             = self.__config.get("BUCKET_NAME_ARTIFACTS", "")
-        REGION                  = self.__config.get("REGION", "")
+        AWS_ACCESS_KEY_ID       = self.__config.get("AWS_ACCESS_KEY_ID", "")
+        AWS_SECRET_ACCESS_KEY   = self.__config.get("AWS_SECRET_ACCESS_KEY", "")
+        BUCKET_NAME             = self.__config.get("AWS_S3_BUCKET_NAME", "")
+        REGION                  = self.__config.get("AWS_S3_REGION", "")
         MODEL_KEY               = self.__config.get("MODEL_NAME", "")
         map_location            = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -236,9 +236,9 @@ class S3Loader:
             else:
                 raise ValueError(f"Unrecognized S3 URL format: {s3_url}")
             
-            AWS_ACCESS_KEY_ID = self.__config.get("ACCES_KEY_ARTIFACTS", "")
-            AWS_SECRET_ACCESS_KEY = self.__config.get("SECRET_KEY_ARTIFACTS", "")
-            REGION = self.__config.get("REGION", "")
+            AWS_ACCESS_KEY_ID = self.__config.get("AWS_ACCESS_KEY_ID", "")
+            AWS_SECRET_ACCESS_KEY = self.__config.get("AWS_SECRET_ACCESS_KEY", "")
+            REGION = self.__config.get("AWS_S3_REGION", "")
             
             session = boto3.Session(
                 aws_access_key_id=AWS_ACCESS_KEY_ID,
