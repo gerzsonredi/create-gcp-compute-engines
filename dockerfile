@@ -20,16 +20,21 @@ RUN apt-get update && apt-get install -y \
     libturbojpeg0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements files
-COPY HRNet/requirements.txt /app/hrnet_requirements.txt
-
 # Install Python dependencies including optimization packages
 RUN pip install flask yacs boto3 pillow requests gunicorn psutil==5.9.5 && \
     pip install --default-timeout=600 torch torchvision transformers && \
     pip install onnx onnxruntime onnxruntime-tools && \
     pip install PyTurboJPEG
 
-RUN pip install --no-cache-dir -r hrnet_requirements.txt
+# Install HRNet specific dependencies directly
+RUN pip install --no-cache-dir \
+    opencv-python \
+    scipy \
+    matplotlib \
+    easydict \
+    tensorboardX \
+    Cython \
+    pycocotools
 
 # Copy the entire application
 COPY . /app/
