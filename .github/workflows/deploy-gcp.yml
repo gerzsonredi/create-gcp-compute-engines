@@ -52,41 +52,48 @@ jobs:
         echo "✅ Checking GitHub secrets configuration..."
         
         # Check GCP secrets
-        if [[ -z "${{ secrets.GCP_PROJECT_ID }}" ]]; then
+        GCP_PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}"
+        GCP_SA_KEY="${{ secrets.GCP_SA_KEY }}"
+        AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+        AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        AWS_S3_BUCKET_NAME="${{ secrets.AWS_S3_BUCKET_NAME }}"
+        AWS_S3_REGION="${{ secrets.AWS_S3_REGION }}"
+        
+        if [ -z "$GCP_PROJECT_ID" ]; then
           echo "❌ ERROR: GCP_PROJECT_ID secret is not set!"
           exit 1
         fi
         
-        if [[ -z "${{ secrets.GCP_SA_KEY }}" ]]; then
+        if [ -z "$GCP_SA_KEY" ]; then
           echo "❌ ERROR: GCP_SA_KEY secret is not set!"
           exit 1
         fi
         
         # Check AWS secrets
-        if [[ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]]; then
+        if [ -z "$AWS_ACCESS_KEY_ID" ]; then
           echo "❌ ERROR: AWS_ACCESS_KEY_ID secret is not set!"
           exit 1
         fi
         
-        if [[ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]]; then
+        if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
           echo "❌ ERROR: AWS_SECRET_ACCESS_KEY secret is not set!"
           exit 1
         fi
         
-        if [[ -z "${{ secrets.AWS_S3_BUCKET_NAME }}" ]]; then
+        if [ -z "$AWS_S3_BUCKET_NAME" ]; then
           echo "❌ ERROR: AWS_S3_BUCKET_NAME secret is not set!"
           exit 1
         fi
         
-        if [[ -z "${{ secrets.AWS_S3_REGION }}" ]]; then
+        if [ -z "$AWS_S3_REGION" ]; then
           echo "❌ ERROR: AWS_S3_REGION secret is not set!"
           exit 1
         fi
         
         echo "✅ All required secrets are configured"
-        echo "🔑 GCP Project ID: ${{ secrets.GCP_PROJECT_ID }}"
-        echo "🪣 AWS S3 Bucket: ${{ secrets.AWS_S3_BUCKET_NAME }}"
-        echo "🌍 AWS S3 Region: ${{ secrets.AWS_S3_REGION }}"
+        echo "🔑 GCP Project ID: $GCP_PROJECT_ID"
+        echo "🪣 AWS S3 Bucket: $AWS_S3_BUCKET_NAME"
+        echo "🌍 AWS S3 Region: $AWS_S3_REGION"
 
     - name: Configure Docker to use gcloud as a credential helper
       run: |
