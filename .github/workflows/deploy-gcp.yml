@@ -93,6 +93,32 @@ jobs:
       run: |
         gcloud auth configure-docker ${{ env.GAR_LOCATION }}
 
+    - name: Ensure Artifact Registry repository exists
+      run: |
+        echo "🔍 Checking if Artifact Registry repository exists..."
+        
+        # Check if repository exists
+        if gcloud artifacts repositories describe ${{ env.REPOSITORY }} \
+           --location=${{ env.REGION }} >/dev/null 2>&1; then
+          echo "✅ Repository '${{ env.REPOSITORY }}' already exists"
+        else
+          echo "📦 Creating Artifact Registry repository..."
+          gcloud artifacts repositories create ${{ env.REPOSITORY }} \
+            --repository-format=docker \
+            --location=${{ env.REGION }} \
+            --description="Repository for garment measuring API with optimizations" || {
+              echo "❌ Failed to create repository. Possible issues:"
+              echo "1. Artifact Registry API is not enabled"
+              echo "2. Service account lacks artifactregistry.repositories.create permission"
+              echo "3. Repository with this name already exists"
+              exit 1
+            }
+          echo "✅ Repository '${{ env.REPOSITORY }}' created successfully"
+        fi
+        
+        echo "🔍 Repository details:"
+        gcloud artifacts repositories describe ${{ env.REPOSITORY }} --location=${{ env.REGION }}
+
     - name: Build CPU-optimized Docker image with TurboJPEG and Quantization
       run: |
         echo "🔨 Building optimized Docker image..."
