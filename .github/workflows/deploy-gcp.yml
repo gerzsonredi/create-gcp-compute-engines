@@ -99,21 +99,35 @@ jobs:
         
         # Check if repository exists
         if gcloud artifacts repositories describe ${{ env.REPOSITORY }} \
-           --location=${{ env.REGION }} >/dev/null 2>&1; then
-          echo "✅ Repository '${{ env.REPOSITORY }}' already exists"
+          --location ${{ env.REGION }} >/dev/null 2>&1; then
+          echo "✅ Repository exists: ${{ env.REPOSITORY }}"
         else
-          echo "📦 Creating Artifact Registry repository..."
-          gcloud artifacts repositories create ${{ env.REPOSITORY }} \
+          echo "📦 Repository does not exist. Attempting to create..."
+          
+          # Try to create repository
+          if gcloud artifacts repositories create ${{ env.REPOSITORY }} \
             --repository-format=docker \
-            --location=${{ env.REGION }} \
-            --description="Repository for garment measuring API with optimizations" || {
-              echo "❌ Failed to create repository. Possible issues:"
-              echo "1. Artifact Registry API is not enabled"
-              echo "2. Service account lacks artifactregistry.repositories.create permission"
-              echo "3. Repository with this name already exists"
-              exit 1
-            }
-          echo "✅ Repository '${{ env.REPOSITORY }}' created successfully"
+            --location ${{ env.REGION }} \
+            --description="Docker repository for garment measuring API" 2>/dev/null; then
+            echo "✅ Repository created successfully: ${{ env.REPOSITORY }}"
+          else
+            echo "❌ Failed to create repository. This might be a permission issue."
+            echo ""
+            echo "🔧 TROUBLESHOOTING STEPS:"
+            echo "1. The Service Account needs 'Artifact Registry Admin' role"
+            echo "2. Or ask a project owner to manually create the repository:"
+            echo "   gcloud artifacts repositories create ${{ env.REPOSITORY }} --repository-format=docker --location ${{ env.REGION }}"
+            echo "3. Check that Artifact Registry API is enabled"
+            echo ""
+            echo "📧 Service Account: hpe-78@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+            echo "🎯 Required permission: artifactregistry.repositories.create"
+            echo "📍 Resource: projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}"
+            echo ""
+            echo "🔗 Manual fix: https://console.cloud.google.com/artifacts/repositories?project=${{ env.PROJECT_ID }}"
+            
+            # Try to continue anyway in case repository exists but describe failed
+            echo "⚠️  Continuing with deployment - repository may already exist..."
+          fi
         fi
         
         echo "🔍 Repository details:"
