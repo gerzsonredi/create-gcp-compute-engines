@@ -7,6 +7,8 @@ from tools.S3Loader import S3Loader
 from tools.logger import EVFSAMLogger
 from tools.performance_monitor import PerformanceMonitor, perf_monitor
 from tools.turbojpeg_loader import turbojpeg_loader
+from tools.parallel_predictor import ParallelPredictor
+
 
 class ApiApp:
     def __init__(self):
@@ -44,27 +46,36 @@ class ApiApp:
                 print("Initializing ClothingCategoryPredictor...")
                 self.__logger.log("Initializing ClothingCategoryPredictor...")
                 self.__category_predictor = ClothingCategoryPredictor(logger=self.__logger)
-
-            print("Setting up routes...")
-            self.__logger.log("Setting up routes...")
-            self.__app.route('/landmarks', methods=['POST'])(self.get_landmarks)
-            self.__app.route('/measurements', methods=['POST'])(self.get_measurements)
-            self.__app.route('/draw_measurements', methods=['POST'])(self.draw_measurements)
-            self.__app.route('/health', methods=['GET'])(self.health_check)
-            self.__app.route('/get_category', methods=['POST'])(self.get_category)
-            self.__app.route('/performance', methods=['GET'])(self.get_performance_stats)
             
-            print("Flask app initialized successfully!")
-            self.__logger.log("Flask app initialized successfully!")
+            # Initialize Parallel Predictor for simultaneous landmark and category detection
+            with self.__perf_monitor.timer("ParallelPredictor_initialization"):
+                print("Initializing ParallelPredictor for simultaneous processing...")
+                self.__logger.log("Initializing ParallelPredictor for simultaneous processing...")
+                self.__parallel_predictor = ParallelPredictor(
+                    landmark_predictor=self.__landmark_predictor,
+                    category_predictor=self.__category_predictor,
+                    logger=self.__logger
+                )
+
+            # Set up routes
+            self.__app.add_url_rule('/health', 'health', self.health, methods=['GET'])
+            self.__app.add_url_rule('/category', 'category', self.get_category, methods=['POST'])
+            self.__app.add_url_rule('/landmarks', 'landmarks', self.get_landmarks, methods=['POST'])
+            self.__app.add_url_rule('/draw_measurements', 'draw_measurements', self.draw_measurements, methods=['POST'])
+            self.__app.add_url_rule('/measurements', 'measurements', self.get_measurements, methods=['POST'])
+            self.__app.add_url_rule('/performance', 'performance', self.get_performance, methods=['GET'])
+            self.__app.add_url_rule('/benchmark', 'benchmark', self.benchmark_parallel, methods=['POST'])
+
+            print("✅ API initialization completed with parallel processing!")
+            self.__logger.log("✅ API initialization completed with parallel processing!")
             
         except Exception as e:
             error_msg = f"Failed to initialize ApiApp: {str(e)}"
             print(error_msg)
-            print(f"Traceback: {traceback.format_exc()}")
             if hasattr(self, '_ApiApp__logger'):
                 self.__logger.log(error_msg)
-                self.__logger.log(f"Traceback: {traceback.format_exc()}")
-            raise
+            print(f"Traceback: {traceback.format_exc()}")
+            raise e
 
     def run_app(self):
         try:
@@ -386,17 +397,7 @@ class ApiApp:
                 if not image_path and not image_url:
                     return jsonify({'error': 'Either image_path or image_url is required'}), 400
                 
-                # Get landmarks with timing
-                with self.__perf_monitor.timer("landmark_detection"):
-                    result = self.__get_landmarks_helper(image_url=image_url, image_path=image_path)
-                    if result is None:
-                        return jsonify({'success': False, 'error': "Failed to get landmarks"}), 500
-                        
-                    landmarks, s3_url = result
-                    if landmarks is None:
-                        return jsonify({'success': False, 'error': "Could not detect landmarks in image"}), 400
-                
-                # Get image for measurements with timing
+                # Get image for parallel processing with timing
                 with self.__perf_monitor.timer("image_loading"):
                     img = None
                     if s3_url:
@@ -406,31 +407,37 @@ class ApiApp:
                     
                     if img is None:
                         return jsonify({'success': False, 'error': "Could not load image for measurements"}), 500
-                
-                # Category prediction with timing
-                with self.__perf_monitor.timer("category_prediction"):
+
+                # 🚀 PARALLEL PREDICTION: Landmark detection + Category prediction simultaneously
+                with self.__perf_monitor.timer("parallel_prediction"):
                     received_category_id = data.get('category_id', 0)
-                    category_id = 0
-                    category_name = ""
+                    
                     try:
-                        category_id, category_name, confidence = self.__category_predictor.predict_category(img)
-                        msg = f"Category predictor predicted the {category_id=}."
+                        landmarks, category_id, category_name, confidence = self.__parallel_predictor.predict_parallel(
+                            img=img,
+                            image_url=image_url,
+                            received_category_id=received_category_id
+                        )
+                        
+                        if landmarks is None:
+                            return jsonify({'success': False, 'error': "Could not detect landmarks in image"}), 400
+                        
+                        msg = f"Parallel prediction completed: category={category_name} (confidence: {confidence:.3f}), landmarks shape={landmarks.shape}"
                         print(msg)
                         self.__logger.log(msg)
-                        if received_category_id == 9:
-                            category_id = 9
-                        elif category_id == 0 and received_category_id in (1,2):
-                            category_id = received_category_id
-                        elif category_id == 0:
+                        
+                        # Handle category-specific logic
+                        if category_id == 0:
                             msg = "Category predictor predicted the category \"other\"."
                             print(msg)
                             self.__logger.log(msg)
                             return jsonify({'success': True, 'message': msg, "url": image_url}), 200
+                            
                     except Exception as e:
-                        error_msg = f"Failed to detect category from the image: {str(e)}"
+                        error_msg = f"Failed parallel prediction: {str(e)}"
                         print(error_msg)
                         self.__logger.log(error_msg)
-                        return jsonify({'success': False, 'error': "Failed to detect category!"}), 400
+                        return jsonify({'success': False, 'error': "Failed to detect landmarks or category!"}), 400
 
                 # Filter landmarks by category with timing
                 with self.__perf_monitor.timer("landmark_filtering"):
@@ -568,6 +575,55 @@ class ApiApp:
             print(error_msg)
             self.__logger.log(error_msg)
             return jsonify({'error': 'Failed to retrieve performance stats'}), 500
+
+    def benchmark_parallel(self):
+        """
+        Benchmark parallel vs sequential prediction performance
+        """
+        try:
+            data = request.get_json()
+            if data is None:
+                return jsonify({'error': 'Invalid JSON or Content-Type not set to application/json'}), 400
+            
+            image_url = data.get('image_url', '')
+            num_runs = data.get('num_runs', 3)
+            
+            if not image_url:
+                return jsonify({'error': 'image_url is required for benchmarking'}), 400
+            
+            # Load test image
+            img = self.__get_image_from_s3_link(public_url=image_url)
+            if img is None:
+                return jsonify({'error': 'Could not load image for benchmarking'}), 400
+            
+            print(f"🔥 Starting parallel vs sequential benchmark with {num_runs} runs...")
+            self.__logger.log(f"🔥 Starting parallel vs sequential benchmark with {num_runs} runs...")
+            
+            # Run benchmark
+            benchmark_results = self.__parallel_predictor.benchmark_parallel_vs_sequential(
+                img=img, 
+                num_runs=num_runs
+            )
+            
+            return jsonify({
+                'success': True,
+                'benchmark_results': benchmark_results,
+                'image_url': image_url,
+                'num_runs': num_runs,
+                'summary': {
+                    'sequential_avg': f"{benchmark_results['sequential_avg_time']:.3f}s",
+                    'parallel_avg': f"{benchmark_results['parallel_avg_time']:.3f}s", 
+                    'speedup': f"{benchmark_results['speedup_factor']:.2f}x",
+                    'time_saved': f"{benchmark_results['time_saved_seconds']:.3f}s",
+                    'speedup_percentage': f"{benchmark_results['speedup_percentage']:.1f}%"
+                }
+            })
+            
+        except Exception as e:
+            error_msg = f"Benchmark failed: {str(e)}"
+            print(error_msg)
+            self.__logger.log(error_msg)
+            return jsonify({'success': False, 'error': error_msg}), 500
 
 if __name__ == '__main__':
     try:
