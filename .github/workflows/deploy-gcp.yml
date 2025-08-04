@@ -157,15 +157,15 @@ jobs:
           --region ${{ env.REGION }} \
           --allow-unauthenticated \
           --port 5003 \
-          --memory 4Gi \
-          --cpu 2 \
+          --memory 8Gi \
+          --cpu 4 \
           --timeout 900 \
           --cpu-boost \
           --concurrency=1 \
-          --min-instances 0 \
+          --min-instances 10 \
           --max-instances 100 \
           --execution-environment gen2 \
-          --set-env-vars="ENVIRONMENT=production,PYTHONPATH=/app,FORCE_CPU=true,CPU_COUNT=2,OMP_NUM_THREADS=4,MKL_NUM_THREADS=4,AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }},AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }},AWS_S3_BUCKET_NAME=${{ secrets.AWS_S3_BUCKET_NAME }},AWS_S3_REGION=${{ secrets.AWS_S3_REGION }}" || {
+          --set-env-vars="ENVIRONMENT=production,PYTHONPATH=/app,FORCE_CPU=true,CPU_COUNT=4,OMP_NUM_THREADS=4,MKL_NUM_THREADS=4,AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }},AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }},AWS_S3_BUCKET_NAME=${{ secrets.AWS_S3_BUCKET_NAME }},AWS_S3_REGION=${{ secrets.AWS_S3_REGION }}" || {
             echo "❌ Deployment failed. Common issues:"
             echo "1. Artifact Registry repository doesn't exist"
             echo "2. Service account lacks necessary permissions"
