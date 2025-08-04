@@ -61,6 +61,13 @@ class ApiApp:
             self.__app.add_url_rule('/health', 'health', self.health_check, methods=['GET'])
             self.__app.add_url_rule('/measurements', 'measurements', self.get_measurements, methods=['POST'])
             self.__app.add_url_rule('/benchmark', 'benchmark', self.benchmark_parallel, methods=['POST'])
+            self.__app.add_url_rule('/warmup', 'warmup', self.warmup, methods=['GET'])
+
+            # Force HTTP connection close for better Cloud Run load balancing
+            @self.__app.after_request
+            def _force_close_connection(resp):
+                resp.headers["Connection"] = "close"
+                return resp
 
             print("✅ API initialization completed with parallel processing!")
             self.__logger.log("✅ API initialization completed with parallel processing!")
@@ -541,6 +548,40 @@ class ApiApp:
         print("Health check endpoint called")
         self.__logger.log("Health check endpoint called")
         return jsonify({'status': 'healthy', 'message': 'API is running'}), 200
+
+    def warmup(self):
+        """Warmup endpoint to pre-load models and cache on each instance"""
+        try:
+            print("🔥 Warmup endpoint called - pre-loading models...")
+            self.__logger.log("🔥 Warmup endpoint called - pre-loading models...")
+            
+            # Force model loading by accessing predictors
+            _ = self.__landmark_predictor
+            _ = self.__category_predictor
+            _ = self.__parallel_predictor
+            
+            # Check model cache status
+            from tools.model_cache import model_cache
+            cache_stats = model_cache.get_stats()
+            
+            warmup_info = {
+                'status': 'warmed_up',
+                'message': 'Instance models pre-loaded successfully',
+                'cache_count': cache_stats['cache_count'],
+                'cache_size_mb': round(cache_stats['total_size_mb'], 2),
+                'cache_utilization': f"{cache_stats['utilization_percent']:.1f}%"
+            }
+            
+            print(f"✅ Warmup completed: {cache_stats['cache_count']} models, {cache_stats['total_size_mb']:.1f}MB")
+            self.__logger.log(f"✅ Warmup completed: {cache_stats['cache_count']} models, {cache_stats['total_size_mb']:.1f}MB")
+            
+            return jsonify(warmup_info), 200
+            
+        except Exception as e:
+            error_msg = f"Warmup failed: {str(e)}"
+            print(error_msg)
+            self.__logger.log(error_msg)
+            return jsonify({'status': 'warmup_failed', 'error': str(e)}), 500
     
     # ----- PERFORMANCE MONITORING -----
     def get_performance_stats(self):
