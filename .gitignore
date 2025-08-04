@@ -50,7 +50,7 @@ coverage.xml
 *.cover
 
 # custom
-HRNet
+# HRNet  # Re-enabled for Docker deployment
 deepfashion2
 artifacts
 configs/config_general_aws.json 
