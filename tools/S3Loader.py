@@ -199,10 +199,13 @@ class S3Loader:
         # Use instance variables instead of config dict
         AWS_ACCESS_KEY_ID = self.aws_access_key_id
         AWS_SECRET_ACCESS_KEY = self.aws_secret_access_key
-        BUCKET_NAME = self.bucket_name
         REGION = self.aws_s3_region
         MODEL_KEY = self.model_name
         map_location = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # 🔧 FIXED: Use correct bucket for model (artifactsredi), not image bucket
+        MODEL_BUCKET = "artifactsredi"  # Models are stored in artifactsredi
+        # self.bucket_name (pictures-not-public) is for image uploads only
 
         session = boto3.Session(
             aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -213,15 +216,22 @@ class S3Loader:
         s3_client = session.client('s3')
 
         try:
-            response = s3_client.get_object(Bucket=BUCKET_NAME, Key=MODEL_KEY)   # s3:GetObject required
-            buffer   = io.BytesIO(response["Body"].read())            # keep it in RAM
-            return torch.load(buffer, map_location=map_location)
+            print(f"[S3LOADER] Loading model from bucket: {MODEL_BUCKET}, key: {MODEL_KEY}")
+            self.__logger.log(f"[S3LOADER] Loading model from bucket: {MODEL_BUCKET}, key: {MODEL_KEY}")
+            
+            response = s3_client.get_object(Bucket=MODEL_BUCKET, Key=MODEL_KEY)   # s3:GetObject required
+            buffer = io.BytesIO(response["Body"].read())            # keep it in RAM
+            model_state = torch.load(buffer, map_location=map_location)
+            
+            print(f"[S3LOADER] ✅ Successfully loaded model from: s3://{MODEL_BUCKET}/{MODEL_KEY}")
+            self.__logger.log(f"[S3LOADER] ✅ Successfully loaded model from: s3://{MODEL_BUCKET}/{MODEL_KEY}")
+            return model_state
 
         except Exception as e:
-            print("ERROR while loading model from s3")
-            print(e)
-            self.__logger.log("ERROR while loading model from s3")
-            self.__logger.log(str(e))
+            print(f"[S3LOADER] ❌ Failed to load model from s3://{MODEL_BUCKET}/{MODEL_KEY}")
+            print(f"[S3LOADER] Error: {e}")
+            self.__logger.log(f"[S3LOADER] ❌ Failed to load model from s3://{MODEL_BUCKET}/{MODEL_KEY}")
+            self.__logger.log(f"[S3LOADER] Error: {e}")
             return None
         
     def get_image_from_link(self, public_url):

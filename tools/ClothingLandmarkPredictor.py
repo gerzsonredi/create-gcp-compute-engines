@@ -73,17 +73,39 @@ class ClothingLandmarkPredictor:
         
         print("Loading model weights...")
         self.__logger.log("Loading model weights...")
-        if not state:
-            self.state = torch.load(self.__WEIGHTS, map_location=self.__DEVICE)
-        else:
+        
+        if state is not None:
+            print("Using model state from S3...")
+            self.__logger.log("Using model state from S3...")
             self.state = state
+        else:
+            print("⚠️ WARNING: No model state from S3, checking local fallback...")
+            self.__logger.log("⚠️ WARNING: No model state from S3, checking local fallback...")
+            
+            # Check if local weights file exists before trying to load
+            if os.path.exists(self.__WEIGHTS):
+                print(f"Loading model weights from local file: {self.__WEIGHTS}")
+                self.__logger.log(f"Loading model weights from local file: {self.__WEIGHTS}")
+                self.state = torch.load(self.__WEIGHTS, map_location=self.__DEVICE)
+            else:
+                error_msg = f"❌ CRITICAL ERROR: No model weights available!"
+                error_msg += f"\n  - S3 download failed (state=None)"
+                error_msg += f"\n  - Local file not found: {self.__WEIGHTS}"
+                error_msg += f"\n  - Cannot initialize model without weights!"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                raise FileNotFoundError(f"No model weights available from S3 or local file: {self.__WEIGHTS}")
         
         # Try to load the state dict with error handling
         try:
             if 'state_dict' in self.state:
                 self.model.load_state_dict(self.state['state_dict'], strict=False)
+                print("✅ Model weights loaded from state_dict")
+                self.__logger.log("✅ Model weights loaded from state_dict")
             else:
                 self.model.load_state_dict(self.state, strict=False)
+                print("✅ Model weights loaded directly")
+                self.__logger.log("✅ Model weights loaded directly")
         except Exception as e:
             print(f"Warning: Could not load all model weights: {e}")
             print("Continuing with randomly initialized weights for missing components...")
