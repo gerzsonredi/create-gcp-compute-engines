@@ -1,5 +1,5 @@
-# 🚀 OPTIMIZED REQUIREMENTS FOR CACHING
-# Pin exact versions for stable Docker layers
+# 🚀 OPTIMIZED REQUIREMENTS FOR CACHING - PYTHON 3.9 COMPATIBLE
+# Pin exact versions for stable Docker layers and Python 3.9 compatibility
 
 # Core Web Framework
 flask==3.0.0
@@ -15,9 +15,9 @@ pillow==10.4.0
 opencv-python==4.10.0.84
 PyTurboJPEG==1.7.5
 
-# Scientific Computing
+# Scientific Computing - Python 3.9 Compatible Versions
 numpy==1.24.3
-scipy==1.14.1
+scipy==1.13.1
 matplotlib==3.9.2
 
 # Machine Learning - PyTorch Stack
@@ -25,12 +25,12 @@ torch==2.4.1
 torchvision==0.19.1
 transformers==4.44.2
 
-# Model Optimization
-onnx==1.16.2
+# Model Optimization - Python 3.9 Compatible
+onnx==1.16.1
 onnxruntime==1.19.2
 onnxruntime-tools==1.7.0
 
-# HRNet Dependencies
+# HRNet Dependencies - Python 3.9 Compatible
 easydict==1.13
 tensorboardX==2.6.2.2
 Cython==3.0.11
