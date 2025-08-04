@@ -36,22 +36,24 @@ RUN pip install --no-cache-dir \
     Cython \
     pycocotools
 
-# Copy the entire application
-COPY . /app/
+# 🚀 COPY HRNet DIRECTORY FIRST (CRITICAL FIX!)
+COPY HRNet/ /app/HRNet/
 
-# Create necessary directories if they don't exist
-RUN mkdir -p /app/artifacts /app/tools /app/HRNet
+# Copy application files
+COPY tools/ /app/tools/
+COPY configs/ /app/configs/
+COPY api_app.py /app/
+
+# Create necessary directories
+RUN mkdir -p /app/artifacts
 
 # Set environment variables for optimization
 ENV PYTHONPATH=/app
-ENV FLASK_APP=api_app.py
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_RUN_PORT=5003
 ENV OMP_NUM_THREADS=4
 ENV MKL_NUM_THREADS=4
 
-# Expose the port the app runs on
+# Expose port
 EXPOSE 5003
 
-# Command to run the application
+# Start the application with gunicorn
 CMD ["gunicorn", "--config", "configs/gunicorn.conf.py", "api_app:app"]
