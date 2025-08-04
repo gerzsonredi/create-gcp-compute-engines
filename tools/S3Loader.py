@@ -6,21 +6,56 @@ from urllib.parse import urlparse
 
 class S3Loader:
     def __init__(self, logger):
-        CONFIG_FILE = "configs/config_general_aws.json"
-        with open(CONFIG_FILE, "r") as jf:
-            self.__config = json.load(jf)
         self.__logger = logger
-    
+        
+        # 🚀 CLOUD RUN FIX: Try environment variables first, fallback to config file
+        self.aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+        self.aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        self.bucket_name = os.getenv("AWS_S3_BUCKET_NAME")
+        self.aws_s3_region = os.getenv("AWS_S3_REGION")
+        self.model_name = os.getenv("MODEL_NAME", "models/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth")
+        
+        # Fallback to config file for local development
+        if not all([self.aws_access_key_id, self.aws_secret_access_key, self.bucket_name, self.aws_s3_region]):
+            CONFIG_FILE = "configs/config_general_aws.json"
+            try:
+                with open(CONFIG_FILE, "r") as jf:
+                    config = json.load(jf)
+                self.aws_access_key_id = self.aws_access_key_id or config.get("AWS_ACCESS_KEY_ID")
+                self.aws_secret_access_key = self.aws_secret_access_key or config.get("AWS_SECRET_ACCESS_KEY")
+                self.bucket_name = self.bucket_name or config.get("AWS_S3_BUCKET_NAME")
+                self.aws_s3_region = self.aws_s3_region or config.get("AWS_S3_REGION")
+                self.model_name = self.model_name or config.get("MODEL_NAME", "models/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth")
+                print(f"[S3LOADER] Loaded AWS config from file: {CONFIG_FILE}")
+                self.__logger.log(f"[S3LOADER] Loaded AWS config from file: {CONFIG_FILE}")
+            except FileNotFoundError:
+                print(f"[S3LOADER] Config file {CONFIG_FILE} not found, using environment variables only")
+                self.__logger.log(f"[S3LOADER] Config file {CONFIG_FILE} not found, using environment variables only")
+            except Exception as e:
+                print(f"[S3LOADER] Error reading config file: {e}")
+                self.__logger.log(f"[S3LOADER] Error reading config file: {e}")
+        else:
+            print(f"[S3LOADER] Loaded AWS config from environment variables")
+            self.__logger.log(f"[S3LOADER] Loaded AWS config from environment variables")
+        
+        # Validate configuration
+        if not all([self.aws_access_key_id, self.aws_secret_access_key, self.bucket_name, self.aws_s3_region]):
+            print(f"[S3LOADER] Warning: Missing AWS credentials, S3 operations may fail")
+            self.__logger.log(f"[S3LOADER] Warning: Missing AWS credentials, S3 operations may fail")
+        else:
+            print(f"[S3LOADER] AWS config ready - Bucket: {self.bucket_name}, Region: {self.aws_s3_region}")
+            self.__logger.log(f"[S3LOADER] AWS config ready - Bucket: {self.bucket_name}, Region: {self.aws_s3_region}")
 
     def upload_s3_image(self, public_url="", image_path="", image_data="", predicted_image=False):
         """
         Takes a public url as argument, and uploads image to AWS S3 bucket.
         Returns public s3 url
         """
-        AWS_ACCESS_KEY_ID       = self.__config.get("AWS_ACCESS_KEY_ID", "")
-        AWS_SECRET_ACCESS_KEY   = self.__config.get("AWS_SECRET_ACCESS_KEY", "")
-        BUCKET_NAME             = self.__config.get("AWS_S3_BUCKET_NAME", "")
-        REGION                  = self.__config.get("AWS_S3_REGION", "")
+        # Use instance variables instead of config dict
+        AWS_ACCESS_KEY_ID = self.aws_access_key_id
+        AWS_SECRET_ACCESS_KEY = self.aws_secret_access_key
+        BUCKET_NAME = self.bucket_name
+        REGION = self.aws_s3_region
         
         session = boto3.Session(
             aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -161,12 +196,13 @@ class S3Loader:
         """
         Helper function to load HRNet model from S3.
         """
-        AWS_ACCESS_KEY_ID       = self.__config.get("AWS_ACCESS_KEY_ID", "")
-        AWS_SECRET_ACCESS_KEY   = self.__config.get("AWS_SECRET_ACCESS_KEY", "")
-        BUCKET_NAME             = self.__config.get("AWS_S3_BUCKET_NAME", "")
-        REGION                  = self.__config.get("AWS_S3_REGION", "")
-        MODEL_KEY               = self.__config.get("MODEL_NAME", "")
-        map_location            = "cuda" if torch.cuda.is_available() else "cpu"
+        # Use instance variables instead of config dict
+        AWS_ACCESS_KEY_ID = self.aws_access_key_id
+        AWS_SECRET_ACCESS_KEY = self.aws_secret_access_key
+        BUCKET_NAME = self.bucket_name
+        REGION = self.aws_s3_region
+        MODEL_KEY = self.model_name
+        map_location = "cuda" if torch.cuda.is_available() else "cpu"
 
         session = boto3.Session(
             aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -236,9 +272,10 @@ class S3Loader:
             else:
                 raise ValueError(f"Unrecognized S3 URL format: {s3_url}")
             
-            AWS_ACCESS_KEY_ID = self.__config.get("AWS_ACCESS_KEY_ID", "")
-            AWS_SECRET_ACCESS_KEY = self.__config.get("AWS_SECRET_ACCESS_KEY", "")
-            REGION = self.__config.get("AWS_S3_REGION", "")
+            # Use instance variables instead of config dict
+            AWS_ACCESS_KEY_ID = self.aws_access_key_id
+            AWS_SECRET_ACCESS_KEY = self.aws_secret_access_key
+            REGION = self.aws_s3_region
             
             session = boto3.Session(
                 aws_access_key_id=AWS_ACCESS_KEY_ID,
