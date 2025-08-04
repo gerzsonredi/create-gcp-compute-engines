@@ -1,11 +1,13 @@
-# Use Python 3.9 as base image
-FROM python:3.9-slim
+# 🚀 OPTIMIZED DOCKERFILE FOR FASTER BUILDS
+# Pin exact Python version for cache stability
+FROM python:3.9.21-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for OpenCV, TurboJPEG, and build tools
-RUN apt-get update && apt-get install -y \
+# 📦 INSTALL SYSTEM DEPENDENCIES (cached layer)
+# Combine all apt operations for better caching
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -18,39 +20,35 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     libturbojpeg0-dev \
     libturbojpeg0 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install Python dependencies including optimization packages
-RUN pip install flask yacs boto3 pillow requests gunicorn psutil==5.9.5 && \
-    pip install --default-timeout=600 torch torchvision transformers && \
-    pip install onnx onnxruntime onnxruntime-tools && \
-    pip install PyTurboJPEG
+# 🏗️ COPY REQUIREMENTS FIRST (for better caching)
+COPY requirements.txt /app/requirements.txt
 
-# Install HRNet specific dependencies directly
-RUN pip install --no-cache-dir \
-    opencv-python \
-    scipy \
-    matplotlib \
-    easydict \
-    tensorboardX \
-    Cython \
-    pycocotools
+# Install Python dependencies (well-cached layer)
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 🚀 COPY HRNet DIRECTORY FIRST (CRITICAL FIX!)
+# 📁 COPY APPLICATION FILES (most frequently changed - at the end)
+# Copy HRNet first (changes less frequently)
 COPY HRNet/ /app/HRNet/
 
-# Copy application files
+# Copy tools (medium frequency changes)
 COPY tools/ /app/tools/
+
+# Copy configs and main app (most frequent changes)
 COPY configs/ /app/configs/
 COPY api_app.py /app/
 
 # Create necessary directories
-RUN mkdir -p /app/artifacts
+RUN mkdir -p /app/artifacts /app/logs
 
-# Set environment variables for optimization
-ENV PYTHONPATH=/app
-ENV OMP_NUM_THREADS=4
-ENV MKL_NUM_THREADS=4
+# 🔧 ENVIRONMENT VARIABLES
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=4 \
+    MKL_NUM_THREADS=4 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # Expose port
 EXPOSE 5003

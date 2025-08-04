@@ -93,64 +93,58 @@ jobs:
       run: |
         gcloud auth configure-docker ${{ env.GAR_LOCATION }}
 
+    - name: Set up Docker Buildx for caching
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: network=host
+
     - name: Ensure Artifact Registry repository exists
       run: |
         echo "🔍 Checking if Artifact Registry repository exists..."
-        
-        # Check if repository exists
-        if gcloud artifacts repositories describe ${{ env.REPOSITORY }} \
-          --location ${{ env.REGION }} >/dev/null 2>&1; then
-          echo "✅ Repository exists: ${{ env.REPOSITORY }}"
+
+        # Try to describe the repository
+        if gcloud artifacts repositories describe ${{ env.REPOSITORY }} --location=${{ env.REGION }} >/dev/null 2>&1; then
+          echo "✅ Repository already exists: ${{ env.REPOSITORY }}"
         else
-          echo "📦 Repository does not exist. Attempting to create..."
+          echo "📦 Creating Artifact Registry repository..."
           
-          # Try to create repository
           if gcloud artifacts repositories create ${{ env.REPOSITORY }} \
             --repository-format=docker \
-            --location ${{ env.REGION }} \
-            --description="Docker repository for garment measuring API" 2>/dev/null; then
+            --location=${{ env.REGION }} \
+            --description="Docker repository for garment measuring API" \
+            --project=${{ env.PROJECT_ID }} 2>/dev/null; then
             echo "✅ Repository created successfully: ${{ env.REPOSITORY }}"
           else
-            echo "❌ Failed to create repository. This might be a permission issue."
-            echo ""
-            echo "🔧 TROUBLESHOOTING STEPS:"
-            echo "1. The Service Account needs 'Artifact Registry Admin' role"
-            echo "2. Or ask a project owner to manually create the repository:"
-            echo "   gcloud artifacts repositories create ${{ env.REPOSITORY }} --repository-format=docker --location ${{ env.REGION }}"
-            echo "3. Check that Artifact Registry API is enabled"
-            echo ""
             echo "📧 Service Account: hpe-78@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
             echo "🎯 Required permission: artifactregistry.repositories.create"
             echo "📍 Resource: projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}"
             echo ""
             echo "🔗 Manual fix: https://console.cloud.google.com/artifacts/repositories?project=${{ env.PROJECT_ID }}"
-            
-            # Try to continue anyway in case repository exists but describe failed
             echo "⚠️  Continuing with deployment - repository may already exist..."
+            
+            if ! gcloud artifacts repositories describe ${{ env.REPOSITORY }} --location=${{ env.REGION }} >/dev/null 2>&1; then
+              echo "❌ Repository does not exist and creation failed. Please create manually or check permissions."
+              exit 1
+            fi
           fi
         fi
         
         echo "🔍 Repository details:"
         gcloud artifacts repositories describe ${{ env.REPOSITORY }} --location=${{ env.REGION }}
 
-    - name: Build CPU-optimized Docker image with TurboJPEG and Quantization
-      run: |
-        echo "🔨 Building optimized Docker image..."
-        echo "📦 Optimizations included:"
-        echo "  ✅ TurboJPEG for faster image loading"
-        echo "  ✅ Dynamic Model Quantization"
-        echo "  ✅ ONNX Runtime CPU optimization"
-        echo "  ✅ Shared Model Cache"
-        echo ""
-        
-        docker build -f dockerfile -t ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-        docker build -f dockerfile -t ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest .
-
-    - name: Push Docker image to Artifact Registry
-      run: |
-        echo "📤 Pushing images to Artifact Registry..."
-        docker push ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-        docker push ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
+    - name: Build CPU-optimized Docker image with caching
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./dockerfile
+        push: true
+        tags: |
+          ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
 
     - name: Deploy to Cloud Run with CPU optimization and GitHub Secrets
       run: |
