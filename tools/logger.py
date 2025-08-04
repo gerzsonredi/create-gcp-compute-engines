@@ -8,21 +8,45 @@ class EVFSAMLogger:
     Each day a new log file is created, named with the date and 'evfsam' marker.
     """
     def __init__(self):
-        CONFIG_FILE = "configs/config_general_aws.json"
-        with open(CONFIG_FILE, "r") as jf:
-            self.__config = json.load(jf)
-        self.bucket_name            = self.__config.get("AWS_S3_BUCKET_NAME")
-        self.aws_access_key_id      = self.__config.get("AWS_ACCESS_KEY_ID")
-        self.aws_secret_access_key  = self.__config.get("AWS_SECRET_ACCESS_KEY")
-        self.aws_s3_region          = self.__config.get("AWS_S3_REGION")
+        # 🚀 CLOUD RUN FIX: Try environment variables first, fallback to config file
+        self.bucket_name = os.getenv("AWS_S3_BUCKET_NAME")
+        self.aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+        self.aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        self.aws_s3_region = os.getenv("AWS_S3_REGION")
+        
+        # Fallback to config file for local development
+        if not all([self.bucket_name, self.aws_access_key_id, self.aws_secret_access_key, self.aws_s3_region]):
+            CONFIG_FILE = "configs/config_general_aws.json"
+            try:
+                with open(CONFIG_FILE, "r") as jf:
+                    config = json.load(jf)
+                self.bucket_name = self.bucket_name or config.get("AWS_S3_BUCKET_NAME")
+                self.aws_access_key_id = self.aws_access_key_id or config.get("AWS_ACCESS_KEY_ID")
+                self.aws_secret_access_key = self.aws_secret_access_key or config.get("AWS_SECRET_ACCESS_KEY")
+                self.aws_s3_region = self.aws_s3_region or config.get("AWS_S3_REGION")
+                print(f"[LOGGER] Loaded AWS config from file: {CONFIG_FILE}")
+            except FileNotFoundError:
+                print(f"[LOGGER] Config file {CONFIG_FILE} not found, using environment variables only")
+            except Exception as e:
+                print(f"[LOGGER] Error reading config file: {e}")
+        else:
+            print(f"[LOGGER] Loaded AWS config from environment variables")
+        
         self.s3_client = None
         if all([self.aws_access_key_id, self.aws_secret_access_key, self.aws_s3_region]):
-            self.s3_client = boto3.client(
-                's3',
-                aws_access_key_id=self.aws_access_key_id,
-                aws_secret_access_key=self.aws_secret_access_key,
-                region_name=self.aws_s3_region
-            )
+            try:
+                self.s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=self.aws_access_key_id,
+                    aws_secret_access_key=self.aws_secret_access_key,
+                    region_name=self.aws_s3_region
+                )
+                print(f"[LOGGER] S3 client initialized for bucket: {self.bucket_name}")
+            except Exception as e:
+                print(f"[LOGGER] Failed to initialize S3 client: {e}")
+        else:
+            print(f"[LOGGER] Missing AWS credentials, S3 logging disabled")
+            
         self.log_dir = "logs"
         os.makedirs(self.log_dir, exist_ok=True)
         self.log_file = self._get_log_filepath()
