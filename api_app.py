@@ -74,9 +74,15 @@ class ApiApp:
             raise e
 
     def run_app(self):
+        """
+        DEPRECATED: Only for local development!
+        In production, use Gunicorn to start the app.
+        """
         try:
+            print("⚠️ WARNING: Running Flask development server - use only for local testing!")
+            print("🚀 For production, use: gunicorn --config configs/gunicorn.conf.py api_app:app")
             sys.stdout.reconfigure(line_buffering=True)
-            self.__app.run(host='0.0.0.0', port=5003, debug=True)
+            self.__app.run(host='0.0.0.0', port=5003, debug=False)  # Debug=False for security
         except Exception as e:
             error_msg = f"Failed to start Flask app: {str(e)}"
             print(error_msg)

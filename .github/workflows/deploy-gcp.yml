@@ -161,10 +161,10 @@ jobs:
           --timeout 900 \
           --cpu-boost \
           --concurrency=1 \
-          --min-instances 20 \
+          --min-instances 50 \
           --max-instances 100 \
           --execution-environment gen2 \
-          --set-env-vars="ENVIRONMENT=production,PYTHONPATH=/app,FORCE_CPU=true,CPU_COUNT=4,OMP_NUM_THREADS=8,MKL_NUM_THREADS=8" || {
+          --set-env-vars="ENVIRONMENT=production,PYTHONPATH=/app,FORCE_CPU=true,CPU_COUNT=8,OMP_NUM_THREADS=6,MKL_NUM_THREADS=6" || {
             echo "❌ Deployment failed. Common issues:"
             echo "1. Artifact Registry repository doesn't exist"
             echo "2. Service account lacks necessary permissions"
@@ -252,7 +252,7 @@ jobs:
         echo "- ✅ **Dynamic Model Quantization** (15.7% faster)" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ **ONNX Runtime** CPU optimization" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ **Shared Model Cache** for multi-worker efficiency" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ **Multi-core processing** with Gunicorn workers" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Multi-core processing** with Gunicorn 1 worker + 8 threads" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📊 **Performance Improvements:**" >> $GITHUB_STEP_SUMMARY
         echo "- **Total processing**: 8.87s → 7.48s (**-15.7%**)" >> $GITHUB_STEP_SUMMARY
@@ -265,10 +265,11 @@ jobs:
         echo "- **URL**: ${{ env.SERVICE_URL }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Region**: ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Image**: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Auto-scaling**: 0-100 instances (1 concurrent per instance)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Memory**: 4Gi per instance" >> $GITHUB_STEP_SUMMARY
-        echo "- **CPU**: 2 cores per instance with CPU boost" >> $GITHUB_STEP_SUMMARY
-        echo "- **Optimization**: TurboJPEG + Dynamic Quantization + ONNX Runtime" >> $GITHUB_STEP_SUMMARY
+        echo "- **Auto-scaling**: 50-100 instances (1 concurrent per instance)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Memory**: 8Gi per instance" >> $GITHUB_STEP_SUMMARY
+        echo "- **CPU**: 8 cores per instance with CPU boost" >> $GITHUB_STEP_SUMMARY
+        echo "- **Gunicorn**: 1 worker + 8 threads, keepalive=0" >> $GITHUB_STEP_SUMMARY
+        echo "- **Optimization**: TurboJPEG + Dynamic Quantization + ONNX Runtime + GCP Storage" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🔐 **Configuration:**" >> $GITHUB_STEP_SUMMARY
         echo "- **Authentication**: Service Account Key" >> $GITHUB_STEP_SUMMARY

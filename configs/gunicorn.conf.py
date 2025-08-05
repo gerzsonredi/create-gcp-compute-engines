@@ -8,10 +8,11 @@ import os
 cpu_count = int(os.getenv('CPU_COUNT', multiprocessing.cpu_count()))
 print(f"Configuring gunicorn with {cpu_count} CPU cores")
 
-# Worker configuration for 4 CPU cores + 8GB RAM
-# With 8GB RAM, we can support more workers efficiently
-workers = min(cpu_count, 4)  # Maximum 4 workers for 4 cores
-worker_class = "sync"
+# Worker configuration for Cloud Run: 8 CPU cores + 8GB RAM  
+# With concurrency=1, single worker + threads works best for load balancing
+workers = 1  # Single worker optimal for Cloud Run concurrency=1
+threads = min(cpu_count, 8)  # Use threads to leverage multiple CPU cores
+worker_class = "gthread"  # Thread-based worker to utilize multiple CPU cores
 worker_connections = 1000
 max_requests = 1000
 max_requests_jitter = 100
@@ -50,12 +51,12 @@ raw_env = [
 ]
 
 def on_starting(server):
-    server.log.info("🚀 Starting Garment Measuring API with optimized configuration")
-    server.log.info(f"💾 Memory: 8GB | 🔧 CPU: 4 cores | 👥 Workers: {workers}")
+    server.log.info("🚀 Starting Garment Measuring API with Cloud Run optimized configuration")
+    server.log.info(f"💾 Memory: 8GB | 🔧 CPU: {cpu_count} cores | 👥 Workers: {workers} | 🧵 Threads: {threads}")
 
 def when_ready(server):
-    server.log.info(f"Clothing Measurement API server ready with {workers} workers on {cpu_count} CPU cores")
-    server.log.info(f"🔧 Configuration: 8GB RAM, 4 CPU cores, optimized for performance")
+    server.log.info(f"Clothing Measurement API server ready: {workers} worker with {threads} threads on {cpu_count} CPU cores")
+    server.log.info(f"🔧 Configuration: 8GB RAM, {cpu_count} CPU cores, keepalive=0, optimized for Cloud Run load balancing")
 
 def worker_int(worker):
     worker.log.info("Worker received INT or QUIT signal")
