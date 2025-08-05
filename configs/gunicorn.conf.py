@@ -17,13 +17,14 @@ max_requests = 1000
 max_requests_jitter = 100
 preload_app = True
 timeout = 900  # 15 minutes for model loading
-keepalive = 5
+keepalive = 0  # Force connection close for better load balancing
 
 # Memory optimization for 8GB RAM
 worker_tmp_dir = "/dev/shm"  # Use shared memory for temp files
 
-# Binding configuration
-bind = "0.0.0.0:5003"
+# Binding configuration - use Cloud Run PORT environment variable
+port = int(os.getenv('PORT', 5003))  # Cloud Run sets PORT, fallback to 5003 for local
+bind = f"0.0.0.0:{port}"
 backlog = 2048
 
 # Process naming
@@ -44,8 +45,8 @@ max_worker_memory = 2000000000  # 2GB per worker (with 8GB total)
 # Environment variables
 raw_env = [
     f"PYTHONPATH={os.getenv('PYTHONPATH', '/app')}",
-    f"OMP_NUM_THREADS=2",  # Limit OpenMP threads per worker
-    f"MKL_NUM_THREADS=2",  # Limit MKL threads per worker
+    "OMP_NUM_THREADS=8",
+    "MKL_NUM_THREADS=8",
 ]
 
 def on_starting(server):

@@ -149,14 +149,13 @@ jobs:
     - name: Deploy to Cloud Run with CPU optimization and GitHub Secrets
       run: |
         echo "🚀 Deploying to Cloud Run with optimizations..."
-        echo "🔑 Using GitHub secrets for AWS configuration..."
+        echo "🔑 Using GCP Service Account authentication..."
         
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
           --platform managed \
           --region ${{ env.REGION }} \
           --allow-unauthenticated \
-          --port 5003 \
           --memory 8Gi \
           --cpu 8 \
           --timeout 900 \

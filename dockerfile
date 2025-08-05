@@ -46,12 +46,12 @@ RUN mkdir -p /app/artifacts /app/logs
 # 🔧 ENVIRONMENT VARIABLES
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
-    OMP_NUM_THREADS=4 \
-    MKL_NUM_THREADS=4 \
+    OMP_NUM_THREADS=8 \
+    MKL_NUM_THREADS=8 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Expose port
-EXPOSE 5003
+# Expose port (Cloud Run will set PORT environment variable dynamically)
+EXPOSE 8080
 
 # Start the application with gunicorn
 CMD ["gunicorn", "--config", "configs/gunicorn.conf.py", "api_app:app"]
