@@ -5,6 +5,7 @@ import os
 from PIL import Image
 from tools.SubcategoryDetector import SubcategoryDetector
 from tools.constants import CATEGORY_LABELS
+from tools.category_mapper import CategoryMapper
 from google.cloud import storage
 
 
@@ -12,6 +13,9 @@ class ClothingCategoryPredictor:
     def __init__(self, logger):
         self.__logger = logger
         self.__device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        
+        # Initialize CategoryMapper for intelligent category mapping
+        self.__category_mapper = CategoryMapper()
         
         # Model configuration for SubCategoryViT
         self.__backbone = "WinKawaks/vit-tiny-patch16-224"  # Hidden size = 192 to match saved model
@@ -88,17 +92,17 @@ class ClothingCategoryPredictor:
                 # Fallback
                 category_name = "other"
                 probability = 0.0
-                category_id = 0
+                category_id = 1
             else:
                 # Get top prediction
                 category_name, probability = predictions[0]
                 
-                # Map to original category system for compatibility  
-                category_id = self.__map_to_original_categories(category_name)
+                # Use CategoryMapper for intelligent mapping  
+                category_id = self.__category_mapper.get_category_id(category_name)
             
             # Log prediction
-            self.__logger.log(f"Predicted category: {category_name}, with certainty: {probability:.1%}")
-            print(f"Predicted category: {category_name}, with certainty: {probability:.1%}")
+            self.__logger.log(f"Predicted category: {category_name} → Category ID: {category_id}, with certainty: {probability:.1%}")
+            print(f"Predicted category: {category_name} → Category ID: {category_id}, with certainty: {probability:.1%}")
             
             if return_idx:
                 return category_id, probability
@@ -110,8 +114,8 @@ class ClothingCategoryPredictor:
             self.__logger.log(f"❌ Category prediction failed: {str(e)}")
             # Fallback to safe defaults
             if return_idx:
-                return 0, 0.0
-            return "other", 0.0, 0
+                return 1, 0.0
+            return "other", 0.0, 1
     
     def predict_category(self, pil_image):
         """
@@ -121,28 +125,8 @@ class ClothingCategoryPredictor:
         category_name, probability, category_id = self.pred(pil_image, return_idx=False)
         return category_id, category_name, probability
     
-    def __map_to_original_categories(self, new_category_name: str) -> int:
-        """Map new SubCategoryViT categories to original category IDs for compatibility"""
-        # Mapping from new categories to original CATEGORY_LABELS indices
-        mapping = {
-            'tops': 1,           # short-sleeve top
-            'blouses': 1,        # short-sleeve top  
-            't-shirts': 1,       # short-sleeve top
-            'shirts': 2,         # long-sleeve top
-            'sweaters': 2,       # long-sleeve top
-            'jackets': 3,        # short-sleeve outwear
-            'coats': 4,          # long-sleeve outwear
-            'leather': 4,        # long-sleeve outwear
-            'cardigans': 5,      # vest
-            'clothing': 5,       # vest
-            'shorts': 7,         # shorts
-            'trousers': 8,       # trousers
-            'skirts': 9,         # skirt
-            'dresses': 10,       # short-sleeve dress
-            'jumpsuits': 10,     # short-sleeve dress
-            'other': 0,          # other
-        }
-        
-        # Convert to lowercase for comparison
-        category_key = new_category_name.lower()
-        return mapping.get(category_key, 0)  # Default to "other" if not found
+    def get_category_mapper(self):
+        """
+        Get the CategoryMapper instance for external use
+        """
+        return self.__category_mapper
