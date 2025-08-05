@@ -1,133 +1,148 @@
-from transformers import AutoImageProcessor, AutoModelForImageClassification
 import torch
-import numpy as np
+import json
+import tempfile
+import os
 from PIL import Image
-import requests
-from tools.model_cache import model_cache
-import time
+from tools.SubcategoryDetector import SubcategoryDetector
+from tools.constants import CATEGORY_LABELS
+from google.cloud import storage
 
 
 class ClothingCategoryPredictor:
     def __init__(self, logger):
-        self.logger = logger
-        # Use a real, publicly available model for clothing classification
-        self.model_name = "microsoft/resnet-50"
+        self.__logger = logger
+        self.__device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
-        # Try to load from cache first
-        print("Checking category predictor cache...")
-        self.logger.log("Checking category predictor cache...")
+        # Model configuration for SubCategoryViT
+        self.__backbone = "WinKawaks/vit-tiny-patch16-224"  # Hidden size = 192 to match saved model
+        self.__model_path = "models/category_predictor/SubCategoryViT/model_epoch_5.pt" 
+        self.__bucket_name = "artifactsredi"
         
-        cached_data = model_cache.get(self.model_name, "category_predictor")
+        # Load category mappings from label_maps.json
+        self.__load_category_mappings()
         
-        if cached_data is not None:
-            print("Loading category predictor from cache...")
-            self.logger.log("Loading category predictor from cache...")
-            
-            self.processor = cached_data['processor']
-            self.model = cached_data['model']
-            
-            print("Category predictor loaded from cache successfully!")
-            self.logger.log("Category predictor loaded from cache successfully!")
-        else:
-            print("Building category predictor from scratch...")
-            self.logger.log("Building category predictor from scratch...")
-            self._build_and_cache_model()
+        # Load and initialize SubCategoryViT model
+        self.__load_model()
         
-        # Define category mapping (simplified for demo)
-        self.category_map = {
-            0: "short sleeve top",
-            1: "long sleeve top", 
-            2: "short sleeve outwear",
-            3: "long sleeve outwear",
-            4: "vest",
-            5: "sling", 
-            6: "shorts",
-            7: "trousers",
-            8: "skirt",
-            9: "short sleeve dress",
-            10: "long sleeve dress",
-            11: "vest dress",
-            12: "sling dress"  # Default fallback
-        }
-        
-    def _build_and_cache_model(self):
-        """Build model from scratch and cache it"""
+    def __load_category_mappings(self):
+        """Load the 661 category mappings from label_maps.json"""
         try:
-            # Load processor and model
-            self.processor = AutoImageProcessor.from_pretrained(self.model_name)
-            self.model = AutoModelForImageClassification.from_pretrained(self.model_name)
+            label_maps_path = os.path.join("tools", "label_maps.json")
+            with open(label_maps_path, 'r') as f:
+                label_data = json.load(f)
             
-            # Set to evaluation mode
-            self.model.eval()
-            
-            # Cache the model for future use (excluding complex objects)
-            cache_data = {
-                'processor': self.processor,
-                'model': self.model,
-                'model_name': self.model_name,
-                'cached_at': time.time()
-            }
-            
-            success = model_cache.put(self.model_name, "category_predictor", cache_data)
-            if success:
-                print("Category predictor cached successfully!")
-                self.logger.log("Category predictor cached successfully!")
-            else:
-                print("Warning: Could not cache category predictor")
-                self.logger.log("Warning: Could not cache category predictor")
-            
-            print("Category predictor loaded successfully!")
-            self.logger.log("Category predictor loaded successfully!")
+            self.__category_maps = label_data["sub"]
+            self.__logger.log(f"✅ Loaded {len(self.__category_maps)} categories from label_maps.json")
             
         except Exception as e:
-            print(f"Warning: Could not load category predictor: {e}")
-            self.logger.log(f"Warning: Could not load category predictor: {e}")
-            print("Using mock category predictor")
-            self.logger.log("Using mock category predictor")
+            self.__logger.log(f"❌ Failed to load label mappings: {str(e)}")
+            raise e
+    
+    def __load_model(self):
+        """Load SubCategoryViT model from GCP Storage"""
+        try:
+            self.__logger.log(f"🔄 Loading SubCategoryViT model from GCP: {self.__model_path}")
             
-            # Use mock components
-            self.processor = None
-            self.model = None
+            # Download model file to temporary location
+            with tempfile.NamedTemporaryFile(suffix='.pt', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+                
+            # Use GCP Storage Client directly for model download
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(self.__bucket_name)
+            blob = bucket.blob(self.__model_path)
+            blob.download_to_filename(tmp_path)
+            
+            self.__logger.log(f"✅ Model downloaded to {tmp_path}")
+            
+            # Load state dict
+            state_dict = torch.load(tmp_path, map_location=self.__device, weights_only=True)
+            
+            # Initialize SubcategoryDetector with the loaded model
+            self.__model = SubcategoryDetector(
+                backbone=self.__backbone,
+                maps=self.__category_maps,
+                state_dict=state_dict,
+                logger=self.__logger
+            )
+            
+            # Clean up temporary file
+            os.unlink(tmp_path)
+            
+            self.__logger.log(f"✅ SubCategoryViT model loaded successfully on {self.__device}")
+            
+        except Exception as e:
+            self.__logger.log(f"❌ Failed to load SubCategoryViT model: {str(e)}")
+            raise e
+    
+    def pred(self, img, return_idx=False):
+        """
+        Receives an image in PIL Image format and returns the category name and probability.
+        Compatible with existing API but uses SubCategoryViT internally.
+        """
+        try:
+            # Get predictions using SubcategoryDetector
+            predictions = self.__model.predict_topx(img, k=3)
+            
+            if not predictions:
+                # Fallback
+                category_name = "other"
+                probability = 0.0
+                category_id = 0
+            else:
+                # Get top prediction
+                category_name, probability = predictions[0]
+                
+                # Map to original category system for compatibility  
+                category_id = self.__map_to_original_categories(category_name)
+            
+            # Log prediction
+            self.__logger.log(f"Predicted category: {category_name}, with certainty: {probability:.1%}")
+            print(f"Predicted category: {category_name}, with certainty: {probability:.1%}")
+            
+            if return_idx:
+                return category_id, probability
+            
+            # Return category_name, probability, category_id (compatible with original API)
+            return category_name, probability, category_id
+            
+        except Exception as e:
+            self.__logger.log(f"❌ Category prediction failed: {str(e)}")
+            # Fallback to safe defaults
+            if return_idx:
+                return 0, 0.0
+            return "other", 0.0, 0
     
     def predict_category(self, pil_image):
         """
-        Predict clothing category from PIL image
-        
-        Args:
-            pil_image: PIL Image object
-            
-        Returns:
-            tuple: (category_id, category_name, confidence)
+        Legacy method for backward compatibility
+        Returns: (category_id, category_name, confidence)
         """
-        try:
-            if self.model is None or self.processor is None:
-                # Mock prediction
-                return 12, "sling dress", 0.85
-            
-            # Preprocess image
-            inputs = self.processor(pil_image, return_tensors="pt")
-            
-            # Make prediction
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
-            
-            # Get predicted category (map to our categories)
-            predicted_class_idx = predictions.argmax().item()
-            confidence = predictions[0][predicted_class_idx].item()
-            
-            # Map to clothing category (simplified mapping)
-            clothing_category_id = predicted_class_idx % len(self.category_map)
-            category_name = self.category_map.get(clothing_category_id, "sling dress")
-            
-            print(f"Predicted category: {category_name} (confidence: {confidence:.3f})")
-            self.logger.log(f"Predicted category: {category_name} (confidence: {confidence:.3f})")
-            
-            return clothing_category_id, category_name, confidence
-            
-        except Exception as e:
-            print(f"Error predicting category: {e}")
-            self.logger.log(f"Error predicting category: {e}")
-            
-            # Return default category on error
-            return 12, "sling dress", 0.0
+        category_name, probability, category_id = self.pred(pil_image, return_idx=False)
+        return category_id, category_name, probability
+    
+    def __map_to_original_categories(self, new_category_name: str) -> int:
+        """Map new SubCategoryViT categories to original category IDs for compatibility"""
+        # Mapping from new categories to original CATEGORY_LABELS indices
+        mapping = {
+            'tops': 1,           # short-sleeve top
+            'blouses': 1,        # short-sleeve top  
+            't-shirts': 1,       # short-sleeve top
+            'shirts': 2,         # long-sleeve top
+            'sweaters': 2,       # long-sleeve top
+            'jackets': 3,        # short-sleeve outwear
+            'coats': 4,          # long-sleeve outwear
+            'leather': 4,        # long-sleeve outwear
+            'cardigans': 5,      # vest
+            'clothing': 5,       # vest
+            'shorts': 7,         # shorts
+            'trousers': 8,       # trousers
+            'skirts': 9,         # skirt
+            'dresses': 10,       # short-sleeve dress
+            'jumpsuits': 10,     # short-sleeve dress
+            'other': 0,          # other
+        }
+        
+        # Convert to lowercase for comparison
+        category_key = new_category_name.lower()
+        return mapping.get(category_key, 0)  # Default to "other" if not found
