@@ -5,8 +5,8 @@
 flask==3.0.0
 gunicorn==23.0.0
 
-# AWS & Configuration
-boto3==1.35.9
+# GCP Cloud Storage & Configuration
+google-cloud-storage==2.18.0
 yacs==0.1.8
 requests==2.32.3
 

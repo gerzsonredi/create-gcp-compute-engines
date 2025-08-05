@@ -3,7 +3,7 @@ import cv2, sys, traceback
 from tools.ClothingLandmarkPredictor import ClothingLandmarkPredictor
 from tools.ClothingMeasurer import ClothingMeasurer
 from tools.ClothingCategoryPredictor import ClothingCategoryPredictor
-from tools.S3Loader import S3Loader
+from tools.GCPStorageLoader import GCPStorageLoader
 from tools.logger import EVFSAMLogger
 from tools.performance_monitor import PerformanceMonitor, perf_monitor
 from tools.turbojpeg_loader import turbojpeg_loader
@@ -22,10 +22,10 @@ class ApiApp:
             self.__app = Flask(__name__, static_folder='', static_url_path='')
             self.__app.secret_key = 'my-secret-key'
 
-            with self.__perf_monitor.timer("S3Loader_initialization"):
-                print("Loading S3Loader...")
-                self.__logger.log("Loading S3Loader...")
-                self.__s3loader = S3Loader(logger=self.__logger)
+            with self.__perf_monitor.timer("GCPStorageLoader_initialization"):
+                print("Loading GCPStorageLoader...")
+                self.__logger.log("Loading GCPStorageLoader...")
+                self.__s3loader = GCPStorageLoader(logger=self.__logger)
             
             with self.__perf_monitor.timer("HRNet_model_download"):
                 print("Loading HRNet model...")
@@ -61,13 +61,6 @@ class ApiApp:
             self.__app.add_url_rule('/health', 'health', self.health_check, methods=['GET'])
             self.__app.add_url_rule('/measurements', 'measurements', self.get_measurements, methods=['POST'])
             self.__app.add_url_rule('/benchmark', 'benchmark', self.benchmark_parallel, methods=['POST'])
-            self.__app.add_url_rule('/warmup', 'warmup', self.warmup, methods=['GET'])
-
-            # Force HTTP connection close for better Cloud Run load balancing
-            @self.__app.after_request
-            def _force_close_connection(resp):
-                resp.headers["Connection"] = "close"
-                return resp
 
             print("✅ API initialization completed with parallel processing!")
             self.__logger.log("✅ API initialization completed with parallel processing!")
@@ -91,20 +84,20 @@ class ApiApp:
             raise
 
     # ----- HELPERS -----
-    def __get_image_from_s3_link(self, public_url):
+    def __get_image_from_gcp_link(self, public_url):
         try:
             return self.__s3loader.get_image_from_link(public_url=public_url)
         except Exception as e:
-            error_msg = f"Failed to get image from S3 link {public_url}: {str(e)}"
+            error_msg = f"Failed to get image from GCP Storage link {public_url}: {str(e)}"
             print(error_msg)
             self.__logger.log(error_msg)
             return None
 
-    def __upload_image_to_s3(self, public_url="", image_path="", image_data=None, predicted=False):
+    def __upload_image_to_gcp(self, public_url="", image_path="", image_data=None, predicted=False):
         """
-        Calls S3Loader upload_s3_image function. 
-        This function expects either a public url or a local image path, that it will upload to S3.
-        Returns public S3 url.
+        Calls GCPStorageLoader upload_s3_image function (kept method name for compatibility). 
+        This function expects either a public url or a local image path, that it will upload to GCP Cloud Storage.
+        Returns public GCP Storage url.
         """
         try:
             return self.__s3loader.upload_s3_image(
@@ -114,25 +107,25 @@ class ApiApp:
                 predicted_image=predicted
             )
         except Exception as e:
-            error_msg = f"Failed to upload image to S3: {str(e)}"
+            error_msg = f"Failed to upload image to GCP Storage: {str(e)}"
             print(error_msg)
             self.__logger.log(error_msg)
             return None
 
     def __get_landmarks_helper(self, image_url="", image_path=""):
         try:
-            print(f"Attempting S3 upload with image_url: {image_url}, image_path: {image_path}")
-            self.__logger.log(f"Attempting S3 upload with image_url: {image_url}, image_path: {image_path}")
+            print(f"Attempting GCP Storage upload with image_url: {image_url}, image_path: {image_path}")
+            self.__logger.log(f"Attempting GCP Storage upload with image_url: {image_url}, image_path: {image_path}")
             
-            s3_url = self.__upload_image_to_s3(public_url=image_url, image_path=image_path)
-            print(f"S3 upload result: {s3_url}")
-            self.__logger.log(f"S3 upload result: {s3_url}")
+            gcp_url = self.__upload_image_to_gcp(public_url=image_url, image_path=image_path)
+            print(f"GCP Storage upload result: {gcp_url}")
+            self.__logger.log(f"GCP Storage upload result: {gcp_url}")
 
             img = None
-            if s3_url or image_url:
-                img = self.__get_image_from_s3_link(public_url=s3_url)
+            if gcp_url or image_url:
+                img = self.__get_image_from_gcp_link(public_url=gcp_url)
                 if img is None:
-                    img = self.__get_image_from_s3_link(public_url=image_url)
+                    img = self.__get_image_from_gcp_link(public_url=image_url)
             else:
                 if image_path:
                     print(f"Falling back to local file: {image_path}")
@@ -160,7 +153,7 @@ class ApiApp:
             
             try:
                 landmarks = self.__landmark_predictor.predict_landmarks(img=img)
-                return landmarks, s3_url
+                return landmarks, gcp_url
             except Exception as e:
                 error_msg = f"Failed to predict landmarks: {str(e)}"
                 print(error_msg)
@@ -175,7 +168,7 @@ class ApiApp:
         
     def __get_category_helper(self, image_url=""):
         try:
-            img = self.__get_image_from_s3_link(public_url=image_url)
+            img = self.__get_image_from_gcp_link(public_url=image_url)
             
             if img is None:
                 error_msg = "Failed to load image from any source"
@@ -407,9 +400,9 @@ class ApiApp:
                 with self.__perf_monitor.timer("image_loading"):
                     img = None
                     if s3_url:
-                        img = self.__get_image_from_s3_link(s3_url)
+                        img = self.__get_image_from_gcp_link(s3_url)
                     if img is None and image_url:
-                        img = self.__get_image_from_s3_link(public_url=image_url)
+                        img = self.__get_image_from_gcp_link(public_url=image_url)
                     
                     if img is None:
                         return jsonify({'success': False, 'error': "Could not load image for measurements"}), 500
@@ -476,14 +469,14 @@ class ApiApp:
                     bg_img = None
                     try:
                         if bg_img_url:
-                            bg_img = self.__get_image_from_s3_link(bg_img_url)
+                            bg_img = self.__get_image_from_gcp_link(bg_img_url)
                         if bg_img is None and s3_url:
-                            bg_img = self.__get_image_from_s3_link(public_url=s3_url)
+                            bg_img = self.__get_image_from_gcp_link(public_url=s3_url)
                             warning_msg = f"No background image provided, using removed mannequin image"
                             print(warning_msg)
                             self.__logger.log(warning_msg)
                         if bg_img is None and image_url:
-                            bg_img = self.__get_image_from_s3_link(public_url=image_url)
+                            bg_img = self.__get_image_from_gcp_link(public_url=image_url)
                             warning_msg = f"No background image provided, using removed mannequin image"
                             print(warning_msg)
                             self.__logger.log(warning_msg)
@@ -514,9 +507,9 @@ class ApiApp:
 
                 # Upload result image with timing
                 with self.__perf_monitor.timer("result_image_upload"):
-                    new_s3_link = self.__upload_image_to_s3(image_data=bg_img, predicted=True)
-                    if new_s3_link is None:
-                        self.__logger.log("Failed to upload result image to S3, continuing without URL")
+                    new_gcp_link = self.__upload_image_to_gcp(image_data=bg_img, predicted=True)
+                    if new_gcp_link is None:
+                        self.__logger.log("Failed to upload result image to GCP Storage, continuing without URL")
 
             # Print performance report
             self.__perf_monitor.print_performance_report()
@@ -527,7 +520,7 @@ class ApiApp:
             return jsonify({
                 'success': True,
                 'measurements': measurements,
-                'url': new_s3_link,
+                'url': new_gcp_link,
                 "category_name": category_name,
                 'performance_timing': {
                     'total_time_seconds': perf_summary['total_session_time'],
@@ -548,40 +541,6 @@ class ApiApp:
         print("Health check endpoint called")
         self.__logger.log("Health check endpoint called")
         return jsonify({'status': 'healthy', 'message': 'API is running'}), 200
-
-    def warmup(self):
-        """Warmup endpoint to pre-load models and cache on each instance"""
-        try:
-            print("🔥 Warmup endpoint called - pre-loading models...")
-            self.__logger.log("🔥 Warmup endpoint called - pre-loading models...")
-            
-            # Force model loading by accessing predictors
-            _ = self.__landmark_predictor
-            _ = self.__category_predictor
-            _ = self.__parallel_predictor
-            
-            # Check model cache status
-            from tools.model_cache import model_cache
-            cache_stats = model_cache.get_stats()
-            
-            warmup_info = {
-                'status': 'warmed_up',
-                'message': 'Instance models pre-loaded successfully',
-                'cache_count': cache_stats['cache_count'],
-                'cache_size_mb': round(cache_stats['total_size_mb'], 2),
-                'cache_utilization': f"{cache_stats['utilization_percent']:.1f}%"
-            }
-            
-            print(f"✅ Warmup completed: {cache_stats['cache_count']} models, {cache_stats['total_size_mb']:.1f}MB")
-            self.__logger.log(f"✅ Warmup completed: {cache_stats['cache_count']} models, {cache_stats['total_size_mb']:.1f}MB")
-            
-            return jsonify(warmup_info), 200
-            
-        except Exception as e:
-            error_msg = f"Warmup failed: {str(e)}"
-            print(error_msg)
-            self.__logger.log(error_msg)
-            return jsonify({'status': 'warmup_failed', 'error': str(e)}), 500
     
     # ----- PERFORMANCE MONITORING -----
     def get_performance_stats(self):
