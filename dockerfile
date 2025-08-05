@@ -53,5 +53,5 @@ ENV PYTHONPATH=/app \
 # Expose port (Cloud Run will set PORT environment variable dynamically)
 EXPOSE 8080
 
-# Start the application with gunicorn
-CMD ["gunicorn", "--config", "configs/gunicorn.conf.py", "api_app:app"]
+# Start the application with gunicorn - explicit port binding for Cloud Run  
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8080} --config configs/gunicorn.conf.py api_app:app"]
