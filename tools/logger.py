@@ -1,6 +1,16 @@
 import os
 from datetime import datetime
-from google.cloud import storage
+
+# 🚨 FALLBACK: Try to import GCP storage, fallback to mock if not available
+try:
+    from google.cloud import storage
+    GCP_AVAILABLE = True
+    print("[LOGGER] google-cloud-storage imported successfully")
+except ImportError as e:
+    print(f"[LOGGER] ⚠️ WARNING: google-cloud-storage not available: {e}")
+    print("[LOGGER] Using fallback mode - log uploads will be skipped")
+    GCP_AVAILABLE = False
+    storage = None
 
 
 class EVFSAMLogger:
@@ -16,12 +26,18 @@ class EVFSAMLogger:
         
         self.bucket_name = "pictures-not-public"  # Use images bucket for logs
         
-        try:
-            self.storage_client = storage.Client()
-            self.bucket = self.storage_client.bucket(self.bucket_name)
-            print(f"[LOGGER] GCP Storage client initialized for bucket: {self.bucket_name}")
-        except Exception as e:
-            print(f"[LOGGER] Failed to initialize GCP Storage client: {e}")
+        if GCP_AVAILABLE:
+            try:
+                self.storage_client = storage.Client()
+                self.bucket = self.storage_client.bucket(self.bucket_name)
+                print(f"[LOGGER] GCP Storage client initialized for bucket: {self.bucket_name}")
+            except Exception as e:
+                print(f"[LOGGER] Failed to initialize GCP Storage client: {e}")
+                print("[LOGGER] Falling back to local-only logging")
+                self.storage_client = None
+                self.bucket = None
+        else:
+            print("[LOGGER] Using fallback mode - logs will be local only")
             self.storage_client = None
             self.bucket = None
             

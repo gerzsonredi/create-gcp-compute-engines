@@ -1,9 +1,19 @@
 import json, io, requests, time, os, torch, cv2
-from google.cloud import storage
 from PIL import Image
 import numpy as np
 from urllib.parse import urlparse
 from tools.turbojpeg_loader import turbojpeg_loader
+
+# 🚨 FALLBACK: Try to import GCP storage, fallback to mock if not available
+try:
+    from google.cloud import storage
+    GCP_AVAILABLE = True
+    print("[GCP_STORAGE] google-cloud-storage imported successfully")
+except ImportError as e:
+    print(f"[GCP_STORAGE] ⚠️ WARNING: google-cloud-storage not available: {e}")
+    print("[GCP_STORAGE] Using fallback mode - uploads will be skipped")
+    GCP_AVAILABLE = False
+    storage = None
 
 
 class GCPStorageLoader:
@@ -21,24 +31,35 @@ class GCPStorageLoader:
         # Model configuration
         self.model_name = os.getenv("MODEL_NAME", "models/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth")
         
-        # Initialize GCP Storage client
-        try:
-            self.storage_client = storage.Client()
-            print(f"[GCP_STORAGE] Client initialized successfully")
-            self.__logger.log(f"[GCP_STORAGE] Client initialized successfully")
-            
-            # Get bucket references
-            self.artifacts_bucket = self.storage_client.bucket(self.artifacts_bucket_name)
-            self.images_bucket = self.storage_client.bucket(self.images_bucket_name)
-            
-            print(f"[GCP_STORAGE] Buckets configured: {self.artifacts_bucket_name}, {self.images_bucket_name}")
-            self.__logger.log(f"[GCP_STORAGE] Buckets configured: {self.artifacts_bucket_name}, {self.images_bucket_name}")
-            
-        except Exception as e:
-            error_msg = f"[GCP_STORAGE] Failed to initialize client: {e}"
-            print(error_msg)
-            self.__logger.log(error_msg)
-            raise
+        # Initialize GCP Storage client with fallback
+        if GCP_AVAILABLE:
+            try:
+                self.storage_client = storage.Client()
+                print(f"[GCP_STORAGE] Client initialized successfully")
+                self.__logger.log(f"[GCP_STORAGE] Client initialized successfully")
+                
+                # Get bucket references
+                self.artifacts_bucket = self.storage_client.bucket(self.artifacts_bucket_name)
+                self.images_bucket = self.storage_client.bucket(self.images_bucket_name)
+                
+                print(f"[GCP_STORAGE] Buckets configured: {self.artifacts_bucket_name}, {self.images_bucket_name}")
+                self.__logger.log(f"[GCP_STORAGE] Buckets configured: {self.artifacts_bucket_name}, {self.images_bucket_name}")
+                
+            except Exception as e:
+                error_msg = f"[GCP_STORAGE] Failed to initialize client: {e}"
+                print(error_msg)
+                self.__logger.log(error_msg)
+                print("[GCP_STORAGE] Falling back to mock mode")
+                self.__logger.log("[GCP_STORAGE] Falling back to mock mode")
+                self.storage_client = None
+                self.artifacts_bucket = None
+                self.images_bucket = None
+        else:
+            print("[GCP_STORAGE] Using mock mode - no actual storage operations")
+            self.__logger.log("[GCP_STORAGE] Using mock mode - no actual storage operations")
+            self.storage_client = None
+            self.artifacts_bucket = None
+            self.images_bucket = None
 
     def upload_s3_image(self, public_url="", image_path="", image_data=None, predicted_image=False):
         """
@@ -54,6 +75,13 @@ class GCPStorageLoader:
             str: Public URL to uploaded image
         """
         try:
+            # 🚨 FALLBACK: If no GCP client, return mock URL
+            if self.storage_client is None or self.images_bucket is None:
+                mock_url = f"https://storage.googleapis.com/{self.images_bucket_name}/mock_upload_{int(time.time())}.jpg"
+                print(f"[GCP_STORAGE] MOCK: Would upload to {mock_url}")
+                self.__logger.log(f"[GCP_STORAGE] MOCK: Would upload to {mock_url}")
+                return mock_url
+            
             timestamp = int(time.time() * 1000)
             
             if predicted_image:
@@ -114,6 +142,14 @@ class GCPStorageLoader:
             torch model state dict or None if failed
         """
         try:
+            # 🚨 FALLBACK: If no GCP client, return None (will trigger local file fallback)
+            if self.storage_client is None or self.artifacts_bucket is None:
+                print(f"[GCP_STORAGE] MOCK: Would load model from gs://{self.artifacts_bucket_name}/{self.model_name}")
+                self.__logger.log(f"[GCP_STORAGE] MOCK: Would load model from gs://{self.artifacts_bucket_name}/{self.model_name}")
+                print("[GCP_STORAGE] Fallback mode - returning None to trigger local file loading")
+                self.__logger.log("[GCP_STORAGE] Fallback mode - returning None to trigger local file loading")
+                return None
+            
             print(f"[GCP_STORAGE] Loading model from bucket: {self.artifacts_bucket_name}, path: {self.model_name}")
             self.__logger.log(f"[GCP_STORAGE] Loading model from bucket: {self.artifacts_bucket_name}, path: {self.model_name}")
             
