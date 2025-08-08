@@ -34,7 +34,7 @@ RUN mkdir -p /app/artifacts /app/tools /app/HRNet /app/artifacts/mannequin_masks
 RUN chmod +x /app/entrypoint.sh
 
 # Set environment variables
-ENV FLASK_APP=api_app.py
+ENV FLASK_APP=main.py
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_RUN_PORT=5003
 
