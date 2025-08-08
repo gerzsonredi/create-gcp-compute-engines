@@ -19,13 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . /app/
 
-# Copy model directories and set up Python paths
-COPY mannequin_segmenter/ /app/mannequin_segmenter/
-COPY garment_category_predictor/ /app/garment_category_predictor/
-COPY openai_api_garment_attribute_predictor/ /app/openai_api_garment_attribute_predictor/
+# Copy model directories and set up Python paths (tools only, no conflicting app files)
+COPY mannequin_segmenter/tools/ /app/mannequin_segmenter/tools/
+COPY garment_category_predictor/tools/ /app/garment_category_predictor/tools/
+COPY openai_api_garment_attribute_predictor/tools/ /app/openai_api_garment_attribute_predictor/tools/
 
-# Set Python path to include model directories
-ENV PYTHONPATH="/app:/app/mannequin_segmenter:/app/garment_category_predictor:/app/openai_api_garment_attribute_predictor:${PYTHONPATH}"
+# Set Python path to include model directories  
+ENV PYTHONPATH="/app:${PYTHONPATH}"
 
 # Create necessary directories
 RUN mkdir -p /app/artifacts /app/tools /app/HRNet /app/artifacts/mannequin_masks
