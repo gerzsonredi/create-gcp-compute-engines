@@ -19,14 +19,21 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . /app/
 
+# Copy model directories and set up Python paths
+COPY mannequin_segmenter/ /app/mannequin_segmenter/
+COPY garment_category_predictor/ /app/garment_category_predictor/
+COPY openai_api_garment_attribute_predictor/ /app/openai_api_garment_attribute_predictor/
+
+# Set Python path to include model directories
+ENV PYTHONPATH="/app:/app/mannequin_segmenter:/app/garment_category_predictor:/app/openai_api_garment_attribute_predictor:${PYTHONPATH}"
+
 # Create necessary directories
-RUN mkdir -p /app/artifacts /app/tools /app/HRNet
+RUN mkdir -p /app/artifacts /app/tools /app/HRNet /app/artifacts/mannequin_masks
 
 # Make entrypoint script executable
 RUN chmod +x /app/entrypoint.sh
 
 # Set environment variables
-ENV PYTHONPATH=/app
 ENV FLASK_APP=api_app.py
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_RUN_PORT=5003
@@ -36,4 +43,4 @@ EXPOSE 5003
 
 # Set entrypoint and default command
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "--config", "configs/gunicorn.conf.py", "api_app:app"]
+CMD ["sh", "-c", "gunicorn --workers 1 -k gthread --threads 8 --timeout 900 --bind 0.0.0.0:$PORT simple_test:app"]
