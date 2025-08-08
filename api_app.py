@@ -1098,16 +1098,24 @@ class ApiApp:
     def measurements_internal(self, image_url, category_id=1):
         """Internal method for measurements (used by orchestrator endpoints)"""
         try:
-            # Load image
-            image = self.__s3loader.get_pil_image_from_url(image_url)
-            if image is None:
+            # Load image (PIL + BGR for predictor)
+            loaded = self.__s3loader.get_pil_image_from_url(image_url, return_bgr=True)
+            if loaded is None:
                 raise ValueError("Failed to load image from URL")
+            if isinstance(loaded, tuple):
+                image_pil, image_bgr = loaded
+            else:
+                image_pil = loaded
+                # Convert PIL to BGR
+                import numpy as np, cv2
+                rgb = np.array(image_pil)
+                image_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             
             # Get measurements using existing logic
             with self.__perf_monitor.timer("measurements_processing"):
-                landmarks = self.__landmark_predictor.pred(image)
+                landmarks = self.__landmark_predictor.predict_landmarks(image_bgr)
                 measurements = self.__measurer.get_measurements(landmarks, category=category_id)
-                visualization = self.__measurer.get_measurements_visualization(image, landmarks, measurements, category=category_id)
+                visualization = self.__measurer.get_measurements_visualization(image_pil, landmarks, measurements, category=category_id)
                 
                 # Upload visualization to GCP
                 result_url = self.__s3loader.save_image_to_gcp_random(visualization)
@@ -1173,15 +1181,22 @@ class ApiApp:
             
             # Load image
             if image_url:
-                img = self.__s3loader.get_pil_image_from_url(image_url)
+                loaded = self.__s3loader.get_pil_image_from_url(image_url, return_bgr=True)
+                if isinstance(loaded, tuple):
+                    _, img_bgr = loaded
+                else:
+                    # Convert PIL to BGR
+                    import numpy as np, cv2
+                    rgb = np.array(loaded)
+                    img_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             else:
-                img = self.__get_image_from_gcp_link(image_path)
+                img_bgr = self.__get_image_from_gcp_link(image_path)
             
-            if img is None:
+            if img_bgr is None:
                 return jsonify({'error': 'Failed to load image'}), 400
             
             # Get landmarks
-            landmarks = self.__landmark_predictor.pred(img)
+            landmarks = self.__landmark_predictor.predict_landmarks(img_bgr)
             
             if landmarks is None:
                 return jsonify({'error': 'Failed to detect landmarks'}), 400
@@ -1189,8 +1204,7 @@ class ApiApp:
             return jsonify({
                 'success': True,
                 'landmarks': landmarks.tolist(),
-                'landmark_count': len(landmarks),
-                'image_dimensions': img.size if hasattr(img, 'size') else None
+                'landmark_count': len(landmarks)
             }), 200
             
         except Exception as e:
