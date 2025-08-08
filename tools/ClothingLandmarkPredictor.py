@@ -243,39 +243,54 @@ class ClothingLandmarkPredictor:
         return coords_img
 
     def predict_landmarks(self, img):
-        """Optimized landmark prediction using INT8 quantization and fast image loading"""
+        """Run HRNet inference with the loaded weights and map results to original image size.
+
+        Falls back to dummy landmarks if inference fails for any reason.
+        """
         try:
-            # Mock landmark detection for now, but with optimized loading
-            dummy_landmarks = np.random.rand(294, 2) * np.array([img.shape[1], img.shape[0]])
-            
-            # Use optimized inference if available
-            if self.onnx_session is not None:
-                # Prepare input for ONNX
-                sample_input = torch.randn(1, 3, 288, 384)
-                input_name = self.onnx_session.get_inputs()[0].name
-                onnx_input = {input_name: sample_input.numpy()}
-                
-                # Run ONNX inference (faster than PyTorch)
-                output = self.onnx_session.run(None, onnx_input)
-                heatmaps = output[0]
-                
-                # Process heatmaps to get coordinates
-                coords, maxvals = get_max_preds(heatmaps)
-                
-                # Use the processed coordinates if they're reasonable
-                if coords.shape[1] == 294:
-                    dummy_landmarks = coords[0] * np.array([img.shape[1], img.shape[0]]) / np.array([96, 72])
-            else:
-                # Use quantized PyTorch model directly
-                print("Using INT8 quantized PyTorch model for inference")
-                self.__logger.log("Using INT8 quantized PyTorch model for inference")
-                    
-            return dummy_landmarks
-            
+            img_h, img_w = img.shape[:2]
+            # Target input size from config (width, height)
+            input_w = int(cfg.MODEL.IMAGE_SIZE[0])
+            input_h = int(cfg.MODEL.IMAGE_SIZE[1])
+
+            # Resize image to model input size
+            resized_bgr = cv2.resize(img, (input_w, input_h), interpolation=cv2.INTER_LINEAR)
+            resized_rgb = cv2.cvtColor(resized_bgr, cv2.COLOR_BGR2RGB)
+
+            # To tensor and normalize
+            input_tensor = self.__to_tensor(resized_rgb).unsqueeze(0).to(self.__DEVICE)
+
+            # Run model (PyTorch path)
+            with torch.no_grad():
+                output = self.model(input_tensor)
+                if isinstance(output, (list, tuple)):
+                    output = output[-1]
+                heatmaps = output.detach().cpu().numpy()  # (1, K, Hm, Wm)
+
+            # Argmax over heatmaps to get landmark coords in heatmap space
+            coords_hm, _ = get_max_preds(heatmaps)  # (1, K, 2)
+            coords_hm = coords_hm[0]
+
+            # Map from heatmap space -> resized image space -> original image space
+            hm_h, hm_w = heatmaps.shape[2], heatmaps.shape[3]
+            # Scale to resized input size
+            scale_x_hm2in = float(input_w) / float(hm_w)
+            scale_y_hm2in = float(input_h) / float(hm_h)
+            coords_in = np.zeros_like(coords_hm, dtype=np.float32)
+            coords_in[:, 0] = coords_hm[:, 0] * scale_x_hm2in
+            coords_in[:, 1] = coords_hm[:, 1] * scale_y_hm2in
+
+            # Scale from resized input back to original image size
+            scale_x_in2orig = float(img_w) / float(input_w)
+            scale_y_in2orig = float(img_h) / float(input_h)
+            coords_orig = np.zeros_like(coords_in, dtype=np.float32)
+            coords_orig[:, 0] = coords_in[:, 0] * scale_x_in2orig
+            coords_orig[:, 1] = coords_in[:, 1] * scale_y_in2orig
+
+            return coords_orig
+
         except Exception as e:
-            print(f"Error in optimized landmark prediction: {e}")
-            self.__logger.log(f"Error in optimized landmark prediction: {e}")
-            # Fallback to dummy landmarks
+            self.__logger.log(f"Error in HRNet landmark prediction, falling back to dummy: {e}")
             return np.random.rand(294, 2) * np.array([img.shape[1], img.shape[0]])
 
     def filter_by_category(self, landmarks, category_id):
