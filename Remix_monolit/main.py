@@ -44,7 +44,8 @@ try:
     from openai_api_garment_attribute_predictor.tools.ConditionPredictor import ConditionPredictor
     from openai_api_garment_attribute_predictor.tools.OpenAIAssistant import OpenAIAssistant
     from openai_api_garment_attribute_predictor.tools.S3Loader import S3Loader as AttributeS3Loader
-    from openai_api_garment_attribute_predictor.tools.logger import EVFSAMLogger
+    # Use local logger to avoid GCS rate limits
+    from tools.logger import EVFSAMLogger
     MODELS_AVAILABLE['attribute_predictor'] = True
     print("✅ Attribute predictor imported successfully")
 except Exception as e:
