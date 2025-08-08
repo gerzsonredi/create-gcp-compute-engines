@@ -43,4 +43,4 @@ EXPOSE 5003
 
 # Set entrypoint and default command
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["sh", "-c", "gunicorn --workers 1 -k gthread --threads 8 --timeout 900 --bind 0.0.0.0:$PORT simple_test:app"]
+CMD ["sh", "-c", "gunicorn --workers 1 -k gthread --threads 8 --timeout 900 --bind 0.0.0.0:$PORT main:app"]
