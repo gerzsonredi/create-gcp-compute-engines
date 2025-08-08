@@ -13,6 +13,7 @@ import json
 import os
 import requests
 from tools.local_birefnet import LocalBiRefNetSegmenter
+from tools.local_bisenet import LocalBiSeNetSegmenter
 
 
 class ApiApp:
@@ -754,18 +755,27 @@ class ApiApp:
                 use_local_segmenter = os.getenv("MANNEQUIN_SEGMENTER_LOCAL", "true").lower() in ("1","true","yes") or not segmenter_base
                 if use_local_segmenter:
                     self.__logger.log("🧩 Using local BiRefNet mannequin segmenter")
-                    # Optional: allow overriding checkpoint path via env; else skip custom weights
-                    checkpoint_obj = os.getenv("MANNEQUIN_CHECKPOINT_OBJECT", "")  # e.g. artifacts path in GCS
-                    checkpoint_local = os.getenv("MANNEQUIN_CHECKPOINT_LOCAL", "artifacts/birefnet/checkpoint.pt")
+                    # Prefer BiSeNet if MANNEQUIN_BACKBONE=bisenet or by default
+                    backbone = os.getenv("MANNEQUIN_BACKBONE", "bisenet").lower()
+                    checkpoint_obj = os.getenv("MANNEQUIN_CHECKPOINT_OBJECT", "")  # e.g. artifactsredi/models/mannequin_segmenter_bisenet/checkpoint-4-2.pth
+                    checkpoint_local = os.getenv("MANNEQUIN_CHECKPOINT_LOCAL", "artifacts/mannequin_segmenter/checkpoint.pt")
                     if checkpoint_obj:
                         _ = self.__s3loader.download_artifact_to_local(checkpoint_obj, checkpoint_local)
-                    segmenter = LocalBiRefNetSegmenter(
-                        model_name=os.getenv("MANNEQUIN_MODEL_NAME","zhengpeng7/BiRefNet"),
-                        checkpoint_path=checkpoint_local if os.path.exists(checkpoint_local) else None,
-                        precision=os.getenv("MANNEQUIN_PRECISION","fp16"),
-                        mask_threshold=float(os.getenv("MANNEQUIN_MASK_THRESHOLD","0.5")),
-                        thickness_threshold=int(os.getenv("MANNEQUIN_THICKNESS","200")),
-                    )
+                    if backbone == "bisenet":
+                        self.__logger.log("🧩 Using local BiSeNet v1 segmenter")
+                        segmenter = LocalBiSeNetSegmenter(
+                            checkpoint_path=checkpoint_local if os.path.exists(checkpoint_local) else None,
+                            image_size=int(os.getenv("MANNEQUIN_IMAGE_SIZE", "512")),
+                            precision=os.getenv("MANNEQUIN_PRECISION","fp32"),
+                        )
+                    else:
+                        segmenter = LocalBiRefNetSegmenter(
+                            model_name=os.getenv("MANNEQUIN_MODEL_NAME","zhengpeng7/BiRefNet"),
+                            checkpoint_path=checkpoint_local if os.path.exists(checkpoint_local) else None,
+                            precision=os.getenv("MANNEQUIN_PRECISION","fp16"),
+                            mask_threshold=float(os.getenv("MANNEQUIN_MASK_THRESHOLD","0.5")),
+                            thickness_threshold=int(os.getenv("MANNEQUIN_THICKNESS","200")),
+                        )
                     # Process locally
                     processed = segmenter.process_image_url(image_url)
                     if processed is not None:
