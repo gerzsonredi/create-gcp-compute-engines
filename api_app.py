@@ -1114,11 +1114,13 @@ class ApiApp:
             # Get measurements using existing logic
             with self.__perf_monitor.timer("measurements_processing"):
                 landmarks = self.__landmark_predictor.predict_landmarks(image_bgr)
-                measurements = self.__measurer.get_measurements(landmarks, category=category_id)
-                visualization = self.__measurer.get_measurements_visualization(image_pil, landmarks, measurements, category=category_id)
-                
-                # Upload visualization to GCP
-                result_url = self.__s3loader.save_image_to_gcp_random(visualization)
+                # Compute measurements on a working copy of the BGR image
+                work_bgr = image_bgr.copy()
+                measurements = self.__measurer.calculate_measurements(work_bgr, landmarks, category_id=category_id)
+                # Draw guide lines on the visualization image
+                self.__measurer.draw_lines(work_bgr, measurements, category_id=category_id)
+                # Upload visualization to GCP (np.ndarray supported)
+                result_url = self.__s3loader.save_image_to_gcp_random(work_bgr)
             
             return {
                 "success": True,
