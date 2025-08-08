@@ -359,4 +359,30 @@ class GCPStorageLoader:
             return f"gs://{self.images_bucket_name}/{blob_name}"
         except Exception as e:
             self.__logger.log(f"[GCP_STORAGE] ❌ save_text_to_gcp failed: {e}")
-            return None 
+            return None
+
+    def download_artifact_to_local(self, object_name: str, destination_path: str) -> bool:
+        """
+        Download an artifact from the artifacts bucket to a local file path.
+
+        Args:
+            object_name: Path of the object inside the artifacts bucket (e.g. "models/…/checkpoint.pt")
+            destination_path: Local filesystem path to save to
+        Returns:
+            True on success, False otherwise
+        """
+        try:
+            if self.storage_client is None or self.artifacts_bucket is None:
+                self.__logger.log("[GCP_STORAGE] download_artifact_to_local: no client/bucket available")
+                return False
+            os.makedirs(os.path.dirname(destination_path) or ".", exist_ok=True)
+            blob = self.artifacts_bucket.blob(object_name)
+            if not blob.exists():
+                self.__logger.log(f"[GCP_STORAGE] ❌ Artifact not found: gs://{self.artifacts_bucket_name}/{object_name}")
+                return False
+            blob.download_to_filename(destination_path)
+            self.__logger.log(f"[GCP_STORAGE] ✅ Downloaded artifact to {destination_path}")
+            return True
+        except Exception as e:
+            self.__logger.log(f"[GCP_STORAGE] ❌ download_artifact_to_local failed: {e}")
+            return False 

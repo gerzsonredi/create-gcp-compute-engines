@@ -12,6 +12,7 @@ from tools.batch_processor import BatchProcessor
 import json
 import os
 import requests
+from tools.local_birefnet import LocalBiRefNetSegmenter
 
 
 class ApiApp:
@@ -750,18 +751,41 @@ class ApiApp:
             # Step 1.5: Optional mannequin removal via external segmenter
             try:
                 segmenter_base = os.getenv("MANNEQUIN_SEGMENTER_BASE_URL", "")
-                if segmenter_base:
-                    self.__logger.log("🧩 Calling mannequin segmenter...")
+                use_local_segmenter = os.getenv("MANNEQUIN_SEGMENTER_LOCAL", "true").lower() in ("1","true","yes") or not segmenter_base
+                if use_local_segmenter:
+                    self.__logger.log("🧩 Using local BiRefNet mannequin segmenter")
+                    # Optional: allow overriding checkpoint path via env; else skip custom weights
+                    checkpoint_obj = os.getenv("MANNEQUIN_CHECKPOINT_OBJECT", "")  # e.g. artifacts path in GCS
+                    checkpoint_local = os.getenv("MANNEQUIN_CHECKPOINT_LOCAL", "artifacts/birefnet/checkpoint.pt")
+                    if checkpoint_obj:
+                        _ = self.__s3loader.download_artifact_to_local(checkpoint_obj, checkpoint_local)
+                    segmenter = LocalBiRefNetSegmenter(
+                        model_name=os.getenv("MANNEQUIN_MODEL_NAME","zhengpeng7/BiRefNet"),
+                        checkpoint_path=checkpoint_local if os.path.exists(checkpoint_local) else None,
+                        precision=os.getenv("MANNEQUIN_PRECISION","fp16"),
+                        mask_threshold=float(os.getenv("MANNEQUIN_MASK_THRESHOLD","0.5")),
+                        thickness_threshold=int(os.getenv("MANNEQUIN_THICKNESS","200")),
+                    )
+                    # Process locally
+                    processed = segmenter.process_image_url(image_url)
+                    if processed is not None:
+                        seg_url = self.__s3loader.save_image_to_gcp_random(processed, prefix="mannequin/")
+                        if seg_url:
+                            image_url = seg_url
+                            results['segmented_image'] = image_url
+                            self.__logger.log("✅ Mannequin removal (local) succeeded")
+                    else:
+                        self.__logger.log("⚠️ Local mannequin removal returned None; continuing with original image")
+                else:
+                    self.__logger.log("🧩 Calling remote mannequin segmenter...")
                     seg_resp = requests.post(f"{segmenter_base}/infer", json={"image_url": image_url}, timeout=60)
                     if seg_resp.status_code == 200:
                         seg_json = seg_resp.json()
                         image_url = seg_json.get("visualization_url", image_url)
                         results['segmented_image'] = image_url
-                        self.__logger.log("✅ Mannequin removal succeeded")
+                        self.__logger.log("✅ Mannequin removal (remote) succeeded")
                     else:
                         self.__logger.log(f"⚠️ Mannequin segmenter HTTP {seg_resp.status_code}, continuing with original image")
-                else:
-                    self.__logger.log("ℹ️ MANNEQUIN_SEGMENTER_BASE_URL not set, skipping mannequin removal")
             except Exception as e:
                 self.__logger.log(f"⚠️ Mannequin removal failed: {e}")
             
