@@ -10,6 +10,8 @@ from tools.turbojpeg_loader import turbojpeg_loader
 from tools.parallel_predictor import ParallelPredictor
 from tools.batch_processor import BatchProcessor
 import json
+import os
+import requests
 
 
 class ApiApp:
@@ -744,6 +746,24 @@ class ApiApp:
                 self.__logger.log(f"⏭️ Skipping measurements for category: {category_name}")
                 results['measurements'] = {"message": "Measurements not applicable for this category"}
                 return jsonify(results)
+            
+            # Step 1.5: Optional mannequin removal via external segmenter
+            try:
+                segmenter_base = os.getenv("MANNEQUIN_SEGMENTER_BASE_URL", "")
+                if segmenter_base:
+                    self.__logger.log("🧩 Calling mannequin segmenter...")
+                    seg_resp = requests.post(f"{segmenter_base}/infer", json={"image_url": image_url}, timeout=60)
+                    if seg_resp.status_code == 200:
+                        seg_json = seg_resp.json()
+                        image_url = seg_json.get("visualization_url", image_url)
+                        results['segmented_image'] = image_url
+                        self.__logger.log("✅ Mannequin removal succeeded")
+                    else:
+                        self.__logger.log(f"⚠️ Mannequin segmenter HTTP {seg_resp.status_code}, continuing with original image")
+                else:
+                    self.__logger.log("ℹ️ MANNEQUIN_SEGMENTER_BASE_URL not set, skipping mannequin removal")
+            except Exception as e:
+                self.__logger.log(f"⚠️ Mannequin removal failed: {e}")
             
             # Step 2: Get measurements using determined category_id
             self.__logger.log("📏 Step 2: Getting measurements...")

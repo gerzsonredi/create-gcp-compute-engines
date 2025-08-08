@@ -231,6 +231,26 @@ class GCPStorageLoader:
             self.__logger.log(error_msg)
             return None
 
+    def get_pil_image_from_url(self, public_url, return_bgr=False):
+        """
+        Download image from URL and return as PIL Image.
+        Optionally return the OpenCV BGR numpy array as well.
+        """
+        try:
+            self.__logger.log(f"[GCP_STORAGE] get_pil_image_from_url: {public_url}")
+            response = requests.get(public_url, timeout=30)
+            response.raise_for_status()
+            img = Image.open(io.BytesIO(response.content)).convert("RGB")
+            if not return_bgr:
+                return img
+            # Also produce BGR array if requested
+            rgb = np.array(img)
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            return img, bgr
+        except Exception as e:
+            self.__logger.log(f"[GCP_STORAGE] ❌ get_pil_image_from_url failed: {e}")
+            return None
+
     def upload_image_data(self, image_data, predicted=False):
         """
         Upload raw image data to GCP Cloud Storage
@@ -296,3 +316,47 @@ class GCPStorageLoader:
             print(error_msg)
             self.__logger.log(error_msg)
             return [] 
+
+    def save_image_to_gcp_random(self, img, prefix: str = ""):
+        """
+        Save a PIL Image or numpy array to GCP under predictions folder and return public URL.
+        """
+        try:
+            # Normalize to numpy BGR for upload_s3_image
+            if isinstance(img, Image.Image):
+                rgb = np.array(img)
+                img_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            elif isinstance(img, np.ndarray):
+                img_bgr = img
+            else:
+                raise ValueError("Unsupported image type for save_image_to_gcp_random")
+            url = self.upload_s3_image(image_data=img_bgr, predicted_image=True)
+            if url and prefix:
+                # If prefix requested, rewrite path to include prefix marker (best-effort)
+                return url.replace("/predictions/", f"/predictions/{prefix}")
+            return url
+        except Exception as e:
+            self.__logger.log(f"[GCP_STORAGE] ❌ save_image_to_gcp_random failed: {e}")
+            return None
+
+    def save_text_to_gcp(self, text_data: str, object_path: str):
+        """
+        Save arbitrary text to GCP Storage under Remix_data/<object_path>.
+        """
+        try:
+            if self.storage_client is None or self.images_bucket is None:
+                # Fallback: write to local logs dir
+                os.makedirs("logs", exist_ok=True)
+                local_path = os.path.join("logs", os.path.basename(object_path))
+                with open(local_path, "w", encoding="utf-8") as f:
+                    f.write(text_data)
+                self.__logger.log(f"[GCP_STORAGE] MOCK saved text locally: {local_path}")
+                return local_path
+            blob_name = f"Remix_data/{object_path}"
+            blob = self.images_bucket.blob(blob_name)
+            blob.upload_from_string(text_data, content_type='application/json; charset=utf-8')
+            self.__logger.log(f"[GCP_STORAGE] ✅ Text saved to gs://{self.images_bucket_name}/{blob_name}")
+            return f"gs://{self.images_bucket_name}/{blob_name}"
+        except Exception as e:
+            self.__logger.log(f"[GCP_STORAGE] ❌ save_text_to_gcp failed: {e}")
+            return None 
