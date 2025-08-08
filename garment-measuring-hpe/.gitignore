@@ -1,0 +1,38 @@
+# Large model files and data
+*.pth
+*.pkl
+*.bin
+*.onnx
+*.h5
+*.pt
+*.safetensors
+
+# Artifacts and cache
+artifacts/
+__pycache__/
+*.pyc
+.cache/
+
+# Logs and test results
+logs/
+*.log
+load_test_*.json
+load_test_*.py
+
+# Environment files
+.env
+.env.*
+
+# Large directories
+HRNet/
+models/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo

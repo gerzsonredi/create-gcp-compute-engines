@@ -1,0 +1,110 @@
+name: Download Garment Measuring HPE Models
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_download:
+        description: 'Force re-download even if files exist'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  download-models:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install google-cloud-storage google-auth
+        
+    - name: Download HPE models from GCP
+      env:
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        BUCKET_NAME_ARTIFACTS: ${{ secrets.BUCKET_NAME_ARTIFACTS }}
+        FORCE_DOWNLOAD: ${{ github.event.inputs.force_download }}
+      run: |
+        if [ "$FORCE_DOWNLOAD" = "true" ]; then
+          echo "🔄 Force download enabled - removing existing files"
+          rm -f artifacts/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth
+          rm -f artifacts/bbox_result_val.pkl
+        fi
+        
+        echo "🚀 Starting model download..."
+        python download_models.py
+        
+    - name: Verify downloads
+      run: |
+        echo "🔍 Verifying downloaded files..."
+        
+        if [ -f "artifacts/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth" ]; then
+          echo "✅ HRNet pose model downloaded successfully"
+          ls -lh artifacts/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth
+        else
+          echo "❌ HRNet pose model not found after download"
+          exit 1
+        fi
+        
+        if [ -f "artifacts/bbox_result_val.pkl" ]; then
+          echo "✅ Bbox result file downloaded successfully"  
+          ls -lh artifacts/bbox_result_val.pkl
+        else
+          echo "❌ Bbox result file not found after download"
+          exit 1
+        fi
+        
+        echo ""
+        echo "🎉 All model files verified successfully!"
+        echo "📊 Total artifacts size:"
+        du -sh artifacts/
+        
+    - name: Create download summary
+      if: always()
+      run: |
+        echo "## 📥 Garment Measuring HPE Model Download Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f "artifacts/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth" ]; then
+          POSE_SIZE=$(ls -lh artifacts/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth | awk '{print $5}')
+          echo "✅ **HRNet Pose Model**: Downloaded successfully ($POSE_SIZE)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **HRNet Pose Model**: Download failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f "artifacts/bbox_result_val.pkl" ]; then
+          BBOX_SIZE=$(ls -lh artifacts/bbox_result_val.pkl | awk '{print $5}')
+          echo "✅ **Bbox Result File**: Downloaded successfully ($BBOX_SIZE)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Bbox Result File**: Download failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔧 Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Force Download**: ${{ github.event.inputs.force_download }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Bucket**: ${{ secrets.BUCKET_NAME_ARTIFACTS }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Repository**: garment-measuring-hpe" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -d "artifacts" ]; then
+          TOTAL_SIZE=$(du -sh artifacts/ | awk '{print $1}')
+          echo "- **Total Size**: $TOTAL_SIZE" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+    - name: Upload models as artifacts (optional)
+      if: success()
+      uses: actions/upload-artifact@v3
+      with:
+        name: garment-measuring-hpe-models
+        path: |
+          artifacts/pose_hrnet-w48_384x288-deepfashion2_mAP_0.7017.pth
+          artifacts/bbox_result_val.pkl
+        retention-days: 7 
