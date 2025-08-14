@@ -1,0 +1,12 @@
+Flask==2.3.3
+requests==2.31.0
+python-dotenv==1.0.0
+gunicorn==21.2.0
+matplotlib==3.7.2
+Pillow==10.0.0
+numpy==1.24.3
+pdfrw
+reportlab
+boto3
+natsort
+aiohttp==3.9.1

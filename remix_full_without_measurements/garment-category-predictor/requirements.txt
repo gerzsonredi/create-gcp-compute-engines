@@ -1,0 +1,12 @@
+flask
+yacs
+boto3
+pillow
+requests
+opencv-python
+torch
+torchvision
+transformers
+numpy
+safetensors
+gunicorn

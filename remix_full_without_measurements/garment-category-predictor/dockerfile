@@ -1,0 +1,37 @@
+# Use Python 3.9 as base image
+FROM python:3.9-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for OpenCV and other libraries
+RUN apt-get update && apt-get install -y \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgl1-mesa-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY requirements.txt /app/
+
+# Install Python dependencies
+RUN pip install --default-timeout=600 -r requirements.txt
+
+# Copy the entire application
+COPY . /app/
+
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV FLASK_APP=api_app.py
+ENV FLASK_RUN_HOST=0.0.0.0
+ENV FLASK_RUN_PORT=5002
+
+# Expose the port the app runs on
+EXPOSE 5002
+
+# Command to run the application
+CMD ["gunicorn", "--config", "configs/gunicorn.conf.py", "api_app:app"]
