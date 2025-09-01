@@ -1,0 +1,351 @@
+name: 🚀 Image Download Benchmark Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_count:
+        description: 'Number of VM instances to create'
+        required: true
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '5'
+          - '10'
+      machine_type:
+        description: 'GCP machine type'
+        required: true
+        default: 'e2-medium'
+        type: choice
+        options:
+          - 'e2-micro'
+          - 'e2-small'
+          - 'e2-medium'
+          - 'e2-standard-2'
+          - 'e2-standard-4'
+      deployment_type:
+        description: 'Deployment type'
+        required: true
+        default: 'multi'
+        type: choice
+        options:
+          - 'single'
+          - 'multi'
+      cleanup_after:
+        description: 'Cleanup VMs after benchmark'
+        required: true
+        default: 'false'
+        type: boolean
+
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'remix-experiments/**'
+      - '.github/workflows/benchmark-deployment.yml'
+
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'remix-experiments/**'
+      - '.github/workflows/benchmark-deployment.yml'
+
+  schedule:
+    # Run daily benchmark at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  GCP_PROJECT_ID: remix-466614
+  GCP_REGION: europe-west1
+  GCP_ZONE: europe-west1-b
+
+jobs:
+  setup:
+    name: 🔧 Setup & Validation
+    runs-on: ubuntu-latest
+    outputs:
+      instance_count: ${{ steps.config.outputs.instance_count }}
+      machine_type: ${{ steps.config.outputs.machine_type }}
+      deployment_type: ${{ steps.config.outputs.deployment_type }}
+      cleanup_after: ${{ steps.config.outputs.cleanup_after }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Set Configuration
+        id: config
+        run: |
+          # Set defaults based on trigger type
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "instance_count=${{ github.event.inputs.instance_count }}" >> $GITHUB_OUTPUT
+            echo "machine_type=${{ github.event.inputs.machine_type }}" >> $GITHUB_OUTPUT
+            echo "deployment_type=${{ github.event.inputs.deployment_type }}" >> $GITHUB_OUTPUT
+            echo "cleanup_after=${{ github.event.inputs.cleanup_after }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "instance_count=3" >> $GITHUB_OUTPUT
+            echo "machine_type=e2-medium" >> $GITHUB_OUTPUT
+            echo "deployment_type=multi" >> $GITHUB_OUTPUT
+            echo "cleanup_after=true" >> $GITHUB_OUTPUT
+          else
+            echo "instance_count=2" >> $GITHUB_OUTPUT
+            echo "machine_type=e2-small" >> $GITHUB_OUTPUT
+            echo "deployment_type=multi" >> $GITHUB_OUTPUT
+            echo "cleanup_after=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔍 Validate Configuration
+        run: |
+          echo "🎯 Deployment Configuration:"
+          echo "  Instance Count: ${{ steps.config.outputs.instance_count }}"
+          echo "  Machine Type: ${{ steps.config.outputs.machine_type }}"
+          echo "  Deployment Type: ${{ steps.config.outputs.deployment_type }}"
+          echo "  Cleanup After: ${{ steps.config.outputs.cleanup_after }}"
+          echo "  Trigger: ${{ github.event_name }}"
+
+  build:
+    name: 🐳 Build Docker Image
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔨 Build Docker Image
+        working-directory: ./remix-experiments
+        run: |
+          echo "🔨 Building Docker image for benchmark..."
+          docker build -t image-download-benchmark .
+          echo "✅ Docker image built successfully"
+
+      - name: 🧪 Test Docker Image
+        working-directory: ./remix-experiments
+        run: |
+          echo "🧪 Testing Docker image..."
+          # Create a minimal test to ensure the image works
+          mkdir -p test_downloads
+          docker run --rm -v "$(pwd)/test_downloads:/app/downloads" image-download-benchmark python -c "
+          import sys
+          import aiohttp
+          import aiofiles
+          print('✅ All required packages are available')
+          print('Python version:', sys.version)
+          "
+          echo "✅ Docker image test passed"
+
+  benchmark-single:
+    name: 🎯 Single VM Benchmark
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    if: needs.setup.outputs.deployment_type == 'single'
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: ☁️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: 🔧 Setup GCP Credentials
+        working-directory: ./remix-experiments
+        run: |
+          echo "🔐 Setting up GCP credentials..."
+          echo "PROJECT_ID=${{ env.GCP_PROJECT_ID }}" > credentials.env
+          echo "VM_ZONE=${{ env.GCP_ZONE }}" >> credentials.env
+          echo 'GCP_SA_KEY=${{ secrets.GCP_SA_KEY }}' >> credentials.env
+          chmod 600 credentials.env
+
+      - name: 🚀 Deploy Single VM Benchmark
+        working-directory: ./remix-experiments
+        run: |
+          echo "🚀 Starting single VM benchmark deployment..."
+          chmod +x full-deploy-benchmark.sh
+          ./full-deploy-benchmark.sh
+        env:
+          MACHINE_TYPE: ${{ needs.setup.outputs.machine_type }}
+
+      - name: 📊 Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: single-vm-benchmark-results
+          path: |
+            ./remix-experiments/logs/
+            ./remix-experiments/multi-deployment-*.env
+          retention-days: 30
+
+      - name: 🧹 Cleanup (if enabled)
+        if: needs.setup.outputs.cleanup_after == 'true'
+        working-directory: ./remix-experiments
+        run: |
+          echo "🧹 Cleaning up VMs..."
+          # Get VM name from deployment summary
+          if [ -f multi-deployment-*.env ]; then
+            source multi-deployment-*.env 2>/dev/null || true
+            if [ -n "$INSTANCE_1_NAME" ]; then
+              gcloud compute instances delete "$INSTANCE_1_NAME" --zone="$GCP_ZONE" --quiet || true
+            fi
+          fi
+
+  benchmark-multi:
+    name: 🎯 Multi-VM Benchmark
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    if: needs.setup.outputs.deployment_type == 'multi'
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: ☁️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: 🔧 Setup GCP Credentials
+        working-directory: ./remix-experiments
+        run: |
+          echo "🔐 Setting up GCP credentials..."
+          echo "PROJECT_ID=${{ env.GCP_PROJECT_ID }}" > credentials.env
+          echo "VM_ZONE=${{ env.GCP_ZONE }}" >> credentials.env
+          echo 'GCP_SA_KEY=${{ secrets.GCP_SA_KEY }}' >> credentials.env
+          chmod 600 credentials.env
+
+      - name: ⚙️ Configure Deployment
+        working-directory: ./remix-experiments
+        run: |
+          echo "⚙️ Configuring multi-instance deployment..."
+          cat > deployment-config.conf << EOF
+          # GitHub Actions Auto-generated Configuration
+          INSTANCE_COUNT=${{ needs.setup.outputs.instance_count }}
+          PROJECT_ID=${{ env.GCP_PROJECT_ID }}
+          ZONE=${{ env.GCP_ZONE }}
+          MACHINE_TYPE=${{ needs.setup.outputs.machine_type }}
+          BOOT_DISK_SIZE=100GB
+          IMAGE_FAMILY=ubuntu-2204-lts
+          IMAGE_PROJECT=ubuntu-os-cloud
+          INSTANCE_NAME_PREFIX=gh-benchmark-vm
+          ENABLE_HTTP_SERVER=true
+          ENABLE_HTTPS_SERVER=false
+          RUN_BENCHMARK_ON_CREATION=true
+          SAVE_RESULTS_LOCALLY=true
+          SHOW_IP_ADDRESSES=true
+          SHOW_DETAILED_RESULTS=true
+          SHOW_PROGRESS=true
+          DELETE_INSTANCES_AFTER_BENCHMARK=false
+          STOP_INSTANCES_AFTER_BENCHMARK=false
+          EOF
+
+      - name: 🚀 Deploy Multi-VM Benchmark
+        working-directory: ./remix-experiments
+        run: |
+          echo "🚀 Starting multi-VM benchmark deployment..."
+          chmod +x multi-deploy-benchmark.sh
+          ./multi-deploy-benchmark.sh
+
+      - name: 📊 Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-vm-benchmark-results-${{ needs.setup.outputs.instance_count }}-instances
+          path: |
+            ./remix-experiments/logs/
+            ./remix-experiments/multi-deployment-*.env
+          retention-days: 30
+
+      - name: 📈 Generate Summary Report
+        working-directory: ./remix-experiments
+        run: |
+          echo "📈 Generating benchmark summary..."
+          
+          # Create summary report
+          cat > benchmark-summary.md << 'EOF'
+          # 🎯 Benchmark Results Summary
+          
+          **Configuration:**
+          - Instance Count: ${{ needs.setup.outputs.instance_count }}
+          - Machine Type: ${{ needs.setup.outputs.machine_type }}
+          - Deployment Type: ${{ needs.setup.outputs.deployment_type }}
+          - Triggered by: ${{ github.event_name }}
+          - Commit: ${{ github.sha }}
+          
+          **Results:**
+          EOF
+          
+          # Add deployment details if available
+          if [ -f multi-deployment-*.env ]; then
+            echo "" >> benchmark-summary.md
+            echo "**VM Instances Created:**" >> benchmark-summary.md
+            grep "INSTANCE_.*_NAME=" multi-deployment-*.env | while read line; do
+              instance_name=$(echo "$line" | cut -d'=' -f2)
+              echo "- $instance_name" >> benchmark-summary.md
+            done
+            
+            echo "" >> benchmark-summary.md
+            echo "**IP Addresses:**" >> benchmark-summary.md
+            grep "INSTANCE_.*_EXTERNAL_IP=" multi-deployment-*.env | while read line; do
+              instance_ip=$(echo "$line" | cut -d'=' -f2)
+              echo "- $instance_ip" >> benchmark-summary.md
+            done
+          fi
+          
+          # Add log summary
+          if [ -d logs ]; then
+            echo "" >> benchmark-summary.md
+            echo "**Log Files Generated:**" >> benchmark-summary.md
+            ls -la logs/ >> benchmark-summary.md
+          fi
+
+      - name: 📊 Upload Summary Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-summary-report
+          path: ./remix-experiments/benchmark-summary.md
+          retention-days: 30
+
+      - name: 🧹 Cleanup (if enabled)
+        if: needs.setup.outputs.cleanup_after == 'true'
+        working-directory: ./remix-experiments
+        run: |
+          echo "🧹 Cleaning up VMs..."
+          if [ -f multi-deployment-*.env ]; then
+            source multi-deployment-*.env 2>/dev/null || true
+            
+            # Delete all created instances
+            for i in $(seq 0 9); do
+              vm_name_var="INSTANCE_${i}_NAME"
+              vm_name=${!vm_name_var}
+              if [ -n "$vm_name" ]; then
+                echo "🗑️ Deleting VM: $vm_name"
+                gcloud compute instances delete "$vm_name" --zone="$GCP_ZONE" --quiet || true
+              fi
+            done
+          fi
+
+  notify:
+    name: 📢 Notification
+    runs-on: ubuntu-latest
+    needs: [setup, benchmark-single, benchmark-multi]
+    if: always()
+    steps:
+      - name: 📢 Send Notification
+        run: |
+          echo "📢 Benchmark deployment completed!"
+          echo "Deployment Type: ${{ needs.setup.outputs.deployment_type }}"
+          echo "Status: ${{ job.status }}"
+          
+          if [ "${{ needs.benchmark-single.result }}" = "success" ] || [ "${{ needs.benchmark-multi.result }}" = "success" ]; then
+            echo "✅ Benchmark completed successfully!"
+          else
+            echo "❌ Benchmark failed - check logs for details"
+          fi
