@@ -72,6 +72,13 @@ else
   : > "$ENV_PATH"
 fi
 
+# Ensure default PORT is present in env file
+DEFAULT_PORT=5001
+if ! grep -q '^PORT=' "$ENV_PATH"; then
+  echo "PORT=$DEFAULT_PORT" >> "$ENV_PATH"
+  echo "ℹ️  Added default PORT=$DEFAULT_PORT to $ENV_PATH"
+fi
+
 echo "📦 Cloning mannequin-segmenter repository..."
 echo "🔍 Debug: REPO_DIR=$REPO_DIR"
 echo "🔍 Debug: GITHUB_TOKEN is ${GITHUB_TOKEN:+SET}${GITHUB_TOKEN:-NOT_SET}"
@@ -140,6 +147,7 @@ docker run -d \
   --name mannequin-segmenter \
   --restart unless-stopped \
   --env-file "$ENV_PATH" \
+  -e PORT=5001 \
   -p 5001:5001 \
   mannequin-segmenter:local
 
