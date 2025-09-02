@@ -80,11 +80,12 @@ jobs:
           if [ -z "$TAG" ]; then cd mannequin-segmenter && TAG=$(git rev-parse --short HEAD) && cd - >/dev/null; fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Check if image already exists
+      - name: Check if image already exists (docker manifest)
         id: check_image
         run: |
           IMAGE_URI="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REPO/$IMAGE_NAME:${{ steps.vars.outputs.tag }}"
-          if gcloud artifacts docker images describe "$IMAGE_URI" --format='get(image_summary.digest)' --quiet >/dev/null 2>&1; then
+          # docker is already configured to auth to Artifact Registry
+          if docker manifest inspect "$IMAGE_URI" >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
