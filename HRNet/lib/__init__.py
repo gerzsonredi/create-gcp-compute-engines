@@ -1,1 +1,0 @@
-# HRNet library package 
