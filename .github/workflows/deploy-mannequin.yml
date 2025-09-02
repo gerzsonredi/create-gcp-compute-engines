@@ -54,14 +54,18 @@ jobs:
           create_credentials_file: true
           export_environment_variables: true
 
+      - name: Set gcloud project
+        run: |
+          gcloud config set project $PROJECT_ID
+
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
       - name: Create Artifact Registry repo if missing (idempotent)
         run: |
-          gcloud artifacts repositories describe $ARTIFACT_REPO --location=$REGION || \
-          gcloud artifacts repositories create $ARTIFACT_REPO --repository-format=docker --location=$REGION --description="Docker images for mannequin-segmenter service"
+          gcloud artifacts repositories describe $ARTIFACT_REPO --location=$REGION --project=$PROJECT_ID || \
+          gcloud artifacts repositories create $ARTIFACT_REPO --repository-format=docker --location=$REGION --project=$PROJECT_ID --description="Docker images for mannequin-segmenter service"
 
       - name: Compute image tag
         id: vars
