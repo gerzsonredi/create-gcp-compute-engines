@@ -43,14 +43,16 @@ jobs:
           ref: main
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Authenticate to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+          create_credentials_file: true
+          export_environment_variables: true
 
       - name: Configure Docker for Artifact Registry
         run: |
