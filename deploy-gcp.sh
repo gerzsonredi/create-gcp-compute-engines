@@ -147,10 +147,15 @@ fi
 
 # Create the VM instance
 echo "🖥️  Creating Compute Engine instance..."
-if [ -z "$IMAGE_URI" ]; then
-  echo "❌ IMAGE_URI environment variable not set. Example: europe-west1-docker.pkg.dev/$PROJECT_ID/mannequin-repo/mannequin:$(git rev-parse --short HEAD)"
-  echo "   Set IMAGE_URI and rerun."
-  exit 1
+echo "ℹ️  Note: Will clone repository and build Docker image on VM"
+
+# Prepare metadata string
+METADATA_STR="MANNEQUIN_ENV_B64=${MANNEQUIN_ENV_B64}"
+if [ -n "$IMAGE_URI" ]; then
+  METADATA_STR="${METADATA_STR},IMAGE_URI=${IMAGE_URI}"
+fi
+if [ -n "$GITHUB_TOKEN_META" ]; then
+  METADATA_STR="${METADATA_STR},GITHUB_TOKEN=${GITHUB_TOKEN_META}"
 fi
 
 gcloud compute instances create $INSTANCE_NAME \
@@ -158,7 +163,7 @@ gcloud compute instances create $INSTANCE_NAME \
     --machine-type=$MACHINE_TYPE \
     --network-interface=network-tier=PREMIUM,stack-type=IPV4_ONLY,subnet=default \
     --metadata-from-file startup-script=startup-script-mannequin.sh \
-    --metadata "MANNEQUIN_ENV_B64=${MANNEQUIN_ENV_B64},IMAGE_URI=${IMAGE_URI}" \
+    --metadata "$METADATA_STR" \
     --maintenance-policy=MIGRATE \
     --provisioning-model=STANDARD \
     --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append \

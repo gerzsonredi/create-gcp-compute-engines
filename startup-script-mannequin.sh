@@ -56,11 +56,7 @@ cd "$APP_DIR"
 echo "🔐 Reading metadata..."
 MANNEQUIN_ENV_B64="$(metadata_get MANNEQUIN_ENV_B64 "")"
 IMAGE_URI="$(metadata_get IMAGE_URI "")"
-
-if [ -z "$IMAGE_URI" ]; then
-  echo "❌ IMAGE_URI metadata is required (e.g., REGION-docker.pkg.dev/PROJECT/REPO/mannequin:TAG)"
-  exit 1
-fi
+GITHUB_TOKEN="$(metadata_get GITHUB_TOKEN "")"
 
 ENV_PATH="${APP_DIR}/.env"
 if [ -n "$MANNEQUIN_ENV_B64" ]; then
@@ -76,11 +72,35 @@ else
   : > "$ENV_PATH"
 fi
 
+echo "📦 Cloning mannequin-segmenter repository..."
+if [ -d "$REPO_DIR" ]; then
+  echo "🧹 Removing existing repository directory"
+  rm -rf "$REPO_DIR"
+fi
+
+mkdir -p "$REPO_DIR"
+cd "$REPO_DIR"
+
+if [ -n "$GITHUB_TOKEN" ]; then
+  echo "🔑 Using GitHub token for private repository access"
+  git clone https://${GITHUB_TOKEN}@github.com/gerzsonredi/mannequin-segmenter-new.git .
+else
+  echo "⚠️  No GitHub token found, attempting public clone"
+  git clone https://github.com/gerzsonredi/mannequin-segmenter-new.git .
+fi
+
+if [ ! -f "Dockerfile" ]; then
+  echo "❌ Dockerfile not found in repository"
+  exit 1
+fi
+
 echo "🔑 Configuring Docker auth for registry..."
-# Derive registry host from IMAGE_URI (before first '/')
-REGISTRY_HOST="$(echo "$IMAGE_URI" | awk -F/ '{print $1}')"
-if [[ "$REGISTRY_HOST" == *"gcr.io"* || "$REGISTRY_HOST" == *"pkg.dev"* ]]; then
-  gcloud auth configure-docker "$REGISTRY_HOST" --quiet
+# Configure registry authentication if IMAGE_URI is provided (for pushing custom builds)
+if [ -n "$IMAGE_URI" ]; then
+  REGISTRY_HOST="$(echo "$IMAGE_URI" | awk -F/ '{print $1}')"
+  if [[ "$REGISTRY_HOST" == *"gcr.io"* || "$REGISTRY_HOST" == *"pkg.dev"* ]]; then
+    gcloud auth configure-docker "$REGISTRY_HOST" --quiet
+  fi
 fi
 
 echo "🧹 Removing any existing container"
@@ -88,8 +108,8 @@ if docker ps -a --format '{{.Names}}' | grep -q '^mannequin-segmenter$'; then
   docker rm -f mannequin-segmenter || true
 fi
 
-echo "⬇️  Pulling image: $IMAGE_URI"
-docker pull "$IMAGE_URI"
+echo "🏗️  Building Docker image from source..."
+docker build -t mannequin-segmenter:local -f Dockerfile .
 
 echo "▶️  Starting mannequin-segmenter container on port 5001"
 docker run -d \
@@ -97,7 +117,7 @@ docker run -d \
   --restart unless-stopped \
   --env-file "$ENV_PATH" \
   -p 5001:5001 \
-  "$IMAGE_URI"
+  mannequin-segmenter:local
 
 echo "✅ Setup complete. Service is listening on port 5001."
 echo "ℹ️  Logs: docker logs -f mannequin-segmenter"

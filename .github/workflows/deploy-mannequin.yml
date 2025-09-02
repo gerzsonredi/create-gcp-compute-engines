@@ -105,10 +105,12 @@ jobs:
           IMAGE_URI: ${{ env.IMAGE_URI }}
           GITHUB_ACTIONS: true
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
           export IMAGE_URI
           export GITHUB_ACTIONS
           export GCP_SA_KEY
+          export GITHUB_TOKEN
           cd ${{ github.workspace }}
           ./deploy-gcp.sh | cat
 
