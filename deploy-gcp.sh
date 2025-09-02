@@ -66,14 +66,21 @@ gcloud services enable compute.googleapis.com --project=$PROJECT_ID
 # Check if instance already exists
 if gcloud compute instances describe $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID &>/dev/null; then
     echo "⚠️  Instance $INSTANCE_NAME already exists in zone $ZONE"
-    read -p "Do you want to delete and recreate it? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    
+    if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+        echo "🤖 GitHub Actions detected - automatically recreating instance"
         echo "🗑️  Deleting existing instance..."
         gcloud compute instances delete $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --quiet
     else
-        echo "❌ Deployment cancelled."
-        exit 1
+        read -p "Do you want to delete and recreate it? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "🗑️  Deleting existing instance..."
+            gcloud compute instances delete $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --quiet
+        else
+            echo "❌ Deployment cancelled."
+            exit 1
+        fi
     fi
 fi
 

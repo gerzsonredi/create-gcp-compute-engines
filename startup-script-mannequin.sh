@@ -73,6 +73,9 @@ else
 fi
 
 echo "📦 Cloning mannequin-segmenter repository..."
+echo "🔍 Debug: REPO_DIR=$REPO_DIR"
+echo "🔍 Debug: GITHUB_TOKEN is ${GITHUB_TOKEN:+SET}${GITHUB_TOKEN:-NOT_SET}"
+
 if [ -d "$REPO_DIR" ]; then
   echo "🧹 Removing existing repository directory"
   rm -rf "$REPO_DIR"
@@ -80,18 +83,39 @@ fi
 
 mkdir -p "$REPO_DIR"
 cd "$REPO_DIR"
+echo "🔍 Debug: Current directory: $(pwd)"
 
 if [ -n "$GITHUB_TOKEN" ]; then
   echo "🔑 Using GitHub token for private repository access"
-  git clone https://${GITHUB_TOKEN}@github.com/gerzsonredi/mannequin-segmenter-new.git .
+  echo "🔍 Debug: Attempting git clone with token..."
+  if git clone https://${GITHUB_TOKEN}@github.com/gerzsonredi/mannequin-segmenter-new.git .; then
+    echo "✅ Repository cloned successfully"
+    echo "🔍 Debug: Repository contents:"
+    ls -la
+  else
+    echo "❌ Failed to clone repository with token"
+    exit 1
+  fi
 else
   echo "⚠️  No GitHub token found, attempting public clone"
-  git clone https://github.com/gerzsonredi/mannequin-segmenter-new.git .
+  echo "🔍 Debug: Attempting public git clone..."
+  if git clone https://github.com/gerzsonredi/mannequin-segmenter-new.git .; then
+    echo "✅ Repository cloned successfully (public)"
+    echo "🔍 Debug: Repository contents:"
+    ls -la
+  else
+    echo "❌ Failed to clone repository (public access)"
+    exit 1
+  fi
 fi
 
 if [ ! -f "Dockerfile" ]; then
   echo "❌ Dockerfile not found in repository"
+  echo "🔍 Debug: Current directory contents:"
+  ls -la
   exit 1
+else
+  echo "✅ Dockerfile found in repository"
 fi
 
 echo "🔑 Configuring Docker auth for registry..."
