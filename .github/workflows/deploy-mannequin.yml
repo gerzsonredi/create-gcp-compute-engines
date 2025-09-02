@@ -1,5 +1,6 @@
 name: Build and Deploy mannequin-segmenter to GCE
 
+# Manual dispatch workflow for deployment
 on:
   workflow_dispatch:
     inputs:
@@ -38,6 +39,7 @@ jobs:
           repository: gerzsonredi/mannequin-segmenter-new
           path: mannequin-segmenter
           ref: main
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
       - name: Authenticate to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
@@ -51,6 +53,11 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      - name: Create Artifact Registry repo if missing (idempotent)
+        run: |
+          gcloud artifacts repositories describe $ARTIFACT_REPO --location=$REGION || \
+          gcloud artifacts repositories create $ARTIFACT_REPO --repository-format=docker --location=$REGION --description="mannequin images"
 
       - name: Compute image tag
         id: vars
@@ -67,11 +74,6 @@ jobs:
           docker build -t "$IMAGE_URI" -f Dockerfile .
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
-
-      - name: Create Artifact Registry repo if missing (idempotent)
-        run: |
-          gcloud artifacts repositories describe $ARTIFACT_REPO --location=$REGION || \
-          gcloud artifacts repositories create $ARTIFACT_REPO --repository-format=docker --location=$REGION --description="mannequin images"
 
       - name: Deploy VM with startup script
         env:
