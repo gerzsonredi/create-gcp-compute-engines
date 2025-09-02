@@ -47,12 +47,18 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Authenticate to Google Cloud (WIF)
+        id: wif
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
           create_credentials_file: true
           export_environment_variables: true
+
+      - name: Export ADC file for gcloud
+        run: |
+          echo "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=${{ steps.wif.outputs.credentials_file_path }}" >> $GITHUB_ENV
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{ steps.wif.outputs.credentials_file_path }}" >> $GITHUB_ENV
 
       - name: Set gcloud project
         run: |
