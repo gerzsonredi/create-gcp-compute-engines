@@ -16,6 +16,8 @@ on:
 permissions:
   contents: read
   id-token: write
+  actions: read
+  repository-projects: read
 
 env:
   PROJECT_ID: remix-466614
