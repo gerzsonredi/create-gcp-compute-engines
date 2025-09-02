@@ -1,41 +1,4 @@
-# 🚀 OPTIMIZED REQUIREMENTS FOR CACHING - PYTHON 3.9 COMPATIBLE
-# Pin exact versions for stable Docker layers and Python 3.9 compatibility
+aiohttp>=3.8.0
+aiofiles>=22.1.0
 
-# Core Web Framework
-flask==3.0.0
-gunicorn==23.0.0
 
-# GCP Cloud Storage & Configuration
-google-cloud-storage==2.18.0
-yacs==0.1.8
-requests==2.32.3
-
-# Image Processing
-pillow==10.4.0
-opencv-python==4.10.0.84
-PyTurboJPEG==1.7.5
-
-# Scientific Computing - Python 3.9 Compatible Versions
-numpy==1.24.3
-scipy==1.13.1
-matplotlib==3.9.2
-
-# Machine Learning - PyTorch Stack
-torch==2.4.1
-torchvision==0.19.1
-transformers==4.44.2
-safetensors==0.4.5
-
-# Model Optimization - Python 3.9 Compatible
-onnx==1.16.1
-onnxruntime==1.19.2
-onnxruntime-tools==1.7.0
-
-# HRNet Dependencies - Python 3.9 Compatible
-easydict==1.13
-tensorboardX==2.6.2.2
-Cython==3.0.11
-pycocotools==2.0.8
-
-# System Monitoring
-psutil==5.9.5 
