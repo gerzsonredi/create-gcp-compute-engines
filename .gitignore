@@ -1,56 +1,43 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
+# Security - Never commit credentials
+credentials.env
+*.env
+*.key
+*.pem
+
+# Logs directory and files
+logs/
+*.log
+
+# Temporary files
+startup-script-auto.sh
+ssh-wrapper.sh
+scp-wrapper.sh
+
+# Downloaded images and benchmark results
 downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+docker_downloads/
+benchmark-results/
 
-# Virtual Environment
-venv/
-env/
-ENV/
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# IDEs and editors
-.idea/
-.vscode/
-*.swp
-*.swo
+# Docker related
+.dockerignore
+
+# GCP deployment artifacts
+multi-deployment-*.env
+
+# macOS
 .DS_Store
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# Distribution / packaging
-*.log
-*.pot
-*.pyc
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-coverage.xml
-*.cover
-
-# custom
-# HRNet  # Re-enabled for Docker deployment
-deepfashion2
-artifacts
-configs/config_general_aws.json 
+# Temporary VM scripts
+*-vm-*.sh
