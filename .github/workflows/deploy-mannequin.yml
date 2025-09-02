@@ -73,21 +73,31 @@ jobs:
           gcloud artifacts repositories describe $ARTIFACT_REPO --location=$REGION --project=$PROJECT_ID || \
           gcloud artifacts repositories create $ARTIFACT_REPO --repository-format=docker --location=$REGION --project=$PROJECT_ID --description="Docker images for mannequin-segmenter service"
 
-      - name: Compute image tag
+      - name: Compute image tag (from mannequin-segmenter repo)
         id: vars
         run: |
           TAG=${{ inputs.image_tag }}
-          if [ -z "$TAG" ]; then TAG=$(git rev-parse --short HEAD); fi
+          if [ -z "$TAG" ]; then cd mannequin-segmenter && TAG=$(git rev-parse --short HEAD) && cd - >/dev/null; fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Build and push image
+      - name: Check if image already exists
+        id: check_image
         run: |
           IMAGE_URI="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REPO/$IMAGE_NAME:${{ steps.vars.outputs.tag }}"
+          if gcloud artifacts docker images describe "$IMAGE_URI" --format='get(image_summary.digest)' --quiet >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Build and push image
+        if: steps.check_image.outputs.exists != 'true'
+        run: |
           echo "Building $IMAGE_URI"
           cd mannequin-segmenter
           docker build -t "$IMAGE_URI" -f Dockerfile .
           docker push "$IMAGE_URI"
-          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
 
       - name: Deploy VM with startup script
         env:

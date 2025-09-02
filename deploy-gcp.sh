@@ -25,11 +25,18 @@ if ! command -v gcloud &> /dev/null; then
     exit 1
 fi
 
-# Check if user is authenticated
+# Check if authentication is available (WIF/ADC or active account)
 if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q .; then
-    echo "❌ Not authenticated with gcloud. Please run:"
-    echo "   gcloud auth login"
-    exit 1
+    # Fall back to ADC env if provided by the CI (WIF)
+    if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+        echo "✅ Using ADC credentials from GOOGLE_APPLICATION_CREDENTIALS"
+    elif [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ] && [ -f "$CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE" ]; then
+        echo "✅ Using ADC credentials from CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE"
+    else
+        echo "❌ Not authenticated with gcloud and no ADC credential file found."
+        echo "   In CI use WIF; locally run: gcloud auth login"
+        exit 1
+    fi
 fi
 
 # Get or set project ID
