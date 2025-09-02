@@ -56,6 +56,11 @@ jobs:
         run: |
           gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
+      - name: Create Artifact Registry repo if missing (idempotent)
+        run: |
+          gcloud artifacts repositories describe $ARTIFACT_REPO --location=$REGION || \
+          gcloud artifacts repositories create $ARTIFACT_REPO --repository-format=docker --location=$REGION --description="Docker images for mannequin-segmenter service"
+
       - name: Compute image tag
         id: vars
         run: |
