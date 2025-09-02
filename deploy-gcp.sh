@@ -90,21 +90,46 @@ fi
 # Prepare metadata for startup script and credentials
 echo "🔧 Preparing instance metadata..."
 
-# Choose env file to pass to instance (prefer credentials.env, fall back to .env if exists)
-ENV_FILE=""
-if [ -f "credentials.env" ]; then
-  ENV_FILE="credentials.env"
-elif [ -f ".env" ]; then
-  ENV_FILE=".env"
-fi
-
+# Handle credentials differently for GitHub Actions vs local development
 MANNEQUIN_ENV_B64=""
-if [ -n "$ENV_FILE" ]; then
-  echo "🗂️  Using env file: $ENV_FILE"
-  # Base64 encode without newlines (portable across macOS/Linux)
-  MANNEQUIN_ENV_B64=$(base64 "$ENV_FILE" | tr -d '\n')
+
+if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+  echo "🤖 GitHub Actions detected - creating credentials from environment variables"
+  
+  # Create temporary credentials.env from environment variables in GitHub Actions
+  TEMP_CREDS_FILE=$(mktemp)
+  cat > "$TEMP_CREDS_FILE" << EOF
+# Environment Variables for GitHub Actions Deployment
+PROJECT_ID=${PROJECT_ID}
+VM_ZONE=${ZONE}
+GCP_SA_KEY=${GCP_SA_KEY:-}
+EOF
+  
+  if [ -s "$TEMP_CREDS_FILE" ]; then
+    echo "🗂️  Using GitHub Actions environment credentials"
+    MANNEQUIN_ENV_B64=$(base64 "$TEMP_CREDS_FILE" | tr -d '\n')
+    rm -f "$TEMP_CREDS_FILE"
+  else
+    echo "⚠️  Warning: No credentials found in GitHub Actions environment"
+  fi
 else
-  echo "ℹ️  No env file found (credentials.env or .env). Proceeding without it."
+  echo "🏠 Local development detected - looking for credentials files"
+  
+  # Choose env file to pass to instance (prefer credentials.env, fall back to .env if exists)
+  ENV_FILE=""
+  if [ -f "credentials.env" ]; then
+    ENV_FILE="credentials.env"
+  elif [ -f ".env" ]; then
+    ENV_FILE=".env"
+  fi
+
+  if [ -n "$ENV_FILE" ]; then
+    echo "🗂️  Using env file: $ENV_FILE"
+    # Base64 encode without newlines (portable across macOS/Linux)
+    MANNEQUIN_ENV_B64=$(base64 "$ENV_FILE" | tr -d '\n')
+  else
+    echo "ℹ️  No env file found (credentials.env or .env). Proceeding without it."
+  fi
 fi
 
 # Optional GitHub token from environment

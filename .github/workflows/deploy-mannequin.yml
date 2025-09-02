@@ -76,8 +76,12 @@ jobs:
       - name: Deploy VM with startup script
         env:
           IMAGE_URI: ${{ env.IMAGE_URI }}
+          GITHUB_ACTIONS: true
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
           export IMAGE_URI
+          export GITHUB_ACTIONS
+          export GCP_SA_KEY
           cd ${{ github.workspace }}
           ./deploy-gcp.sh | cat
 
