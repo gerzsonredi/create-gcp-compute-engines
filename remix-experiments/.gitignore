@@ -9,7 +9,7 @@ logs/
 *.log
 
 # Temporary files
-startup-script*.sh
+startup-script-auto.sh
 ssh-wrapper.sh
 scp-wrapper.sh
 

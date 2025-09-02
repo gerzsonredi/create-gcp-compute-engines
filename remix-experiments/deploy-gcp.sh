@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # GCP Compute Engine Deployment Script
-# Creates a VM with specified requirements and runs the image download benchmark
+# Creates a VM with specified requirements and runs the mannequin-segmenter service
 
 set -e
 
@@ -13,6 +13,7 @@ MACHINE_TYPE="e2-medium"  # 2 vCPUs, 4GB RAM
 BOOT_DISK_SIZE="100GB"
 IMAGE_FAMILY="ubuntu-2204-lts"
 IMAGE_PROJECT="ubuntu-os-cloud"
+IMAGE_URI=${IMAGE_URI:-""} # e.g. europe-west1-docker.pkg.dev/PROJECT/REPO/mannequin:<tag>
 
 echo "🚀 Deploying Image Download Benchmark to GCP Compute Engine"
 echo "============================================================"
@@ -49,6 +50,7 @@ echo "   Instance Name: $INSTANCE_NAME"
 echo "   Machine Type: $MACHINE_TYPE (2 vCPUs, 4GB RAM)"
 echo "   Boot Disk: $BOOT_DISK_SIZE"
 echo "   OS: Ubuntu 22.04 LTS"
+if [ -n "$IMAGE_URI" ]; then echo "   Image URI: $IMAGE_URI"; fi
 
 # Enable required APIs
 echo "🔧 Enabling required APIs..."
@@ -68,7 +70,7 @@ if gcloud compute instances describe $INSTANCE_NAME --zone=$ZONE --project=$PROJ
     fi
 fi
 
-# Create firewall rule for HTTP traffic (if needed)
+# Create firewall rules for HTTP/HTTPS and mannequin-segmenter port 5001 (if needed)
 echo "🔒 Setting up firewall rules..."
 if ! gcloud compute firewall-rules describe allow-http --project=$PROJECT_ID &>/dev/null; then
     gcloud compute firewall-rules create allow-http \
@@ -77,14 +79,54 @@ if ! gcloud compute firewall-rules describe allow-http --project=$PROJECT_ID &>/
         --description "Allow HTTP and HTTPS traffic" \
         --project=$PROJECT_ID
 fi
+if ! gcloud compute firewall-rules describe allow-mannequin-5001 --project=$PROJECT_ID &>/dev/null; then
+    gcloud compute firewall-rules create allow-mannequin-5001 \
+        --allow tcp:5001 \
+        --source-ranges 0.0.0.0/0 \
+        --description "Allow mannequin-segmenter service on port 5001" \
+        --project=$PROJECT_ID
+fi
+
+# Prepare metadata for startup script and credentials
+echo "🔧 Preparing instance metadata..."
+
+# Choose env file to pass to instance (prefer credentials.env, fall back to .env if exists)
+ENV_FILE=""
+if [ -f "credentials.env" ]; then
+  ENV_FILE="credentials.env"
+elif [ -f ".env" ]; then
+  ENV_FILE=".env"
+fi
+
+MANNEQUIN_ENV_B64=""
+if [ -n "$ENV_FILE" ]; then
+  echo "🗂️  Using env file: $ENV_FILE"
+  # Base64 encode without newlines (portable across macOS/Linux)
+  MANNEQUIN_ENV_B64=$(base64 "$ENV_FILE" | tr -d '\n')
+else
+  echo "ℹ️  No env file found (credentials.env or .env). Proceeding without it."
+fi
+
+# Optional GitHub token from environment
+GITHUB_TOKEN_META=""
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  GITHUB_TOKEN_META="$GITHUB_TOKEN"
+fi
 
 # Create the VM instance
 echo "🖥️  Creating Compute Engine instance..."
+if [ -z "$IMAGE_URI" ]; then
+  echo "❌ IMAGE_URI environment variable not set. Example: europe-west1-docker.pkg.dev/$PROJECT_ID/mannequin-repo/mannequin:$(git rev-parse --short HEAD)"
+  echo "   Set IMAGE_URI and rerun."
+  exit 1
+fi
+
 gcloud compute instances create $INSTANCE_NAME \
     --zone=$ZONE \
     --machine-type=$MACHINE_TYPE \
     --network-interface=network-tier=PREMIUM,stack-type=IPV4_ONLY,subnet=default \
-    --metadata-from-file startup-script=startup-script.sh \
+    --metadata-from-file startup-script=startup-script-mannequin.sh \
+    --metadata "MANNEQUIN_ENV_B64=${MANNEQUIN_ENV_B64},IMAGE_URI=${IMAGE_URI}" \
     --maintenance-policy=MIGRATE \
     --provisioning-model=STANDARD \
     --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append \
@@ -112,8 +154,8 @@ echo "   Internal IP: $INTERNAL_IP"
 echo "   Machine Type: $MACHINE_TYPE"
 
 echo ""
-echo "⏳ Startup script is running... This may take 3-5 minutes."
-echo "   The script will install Docker and run the benchmark automatically."
+echo "⏳ Startup script is running... This may take a few minutes."
+echo "   The script will install Docker and run the mannequin-segmenter service on port 5001."
 
 echo ""
 echo "📋 Useful commands:"
@@ -123,8 +165,8 @@ echo ""
 echo "   # Check startup script logs:"
 echo "   gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command='sudo journalctl -u google-startup-scripts.service -f'"
 echo ""
-echo "   # View benchmark results:"
-echo "   gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command='sudo ls -la /opt/benchmark-results/'"
+echo "   # Check service logs:"
+echo "   gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command='sudo docker logs -f mannequin-segmenter'"
 echo ""
 echo "   # Stop instance:"
 echo "   gcloud compute instances stop $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID"
@@ -133,4 +175,6 @@ echo "   # Delete instance:"
 echo "   gcloud compute instances delete $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID"
 
 echo ""
-echo "🎉 Deployment completed! The benchmark will run automatically on startup."
+echo "🎉 Deployment completed! The mannequin-segmenter API will start automatically on port 5001."
+
+
