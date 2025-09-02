@@ -39,7 +39,7 @@ systemctl start docker
 systemctl enable docker
 
 # Allow current user to use docker (usually root in startup script)
-usermod -aG docker "$USER" || true
+usermod -aG docker "$(whoami)" || true
 
 # Install Google Cloud SDK for Artifact Registry authentication
 echo "📦 Installing Google Cloud SDK..."
