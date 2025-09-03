@@ -57,6 +57,7 @@ echo "🔐 Reading metadata..."
 MANNEQUIN_ENV_B64="$(metadata_get MANNEQUIN_ENV_B64 "")"
 IMAGE_URI="$(metadata_get IMAGE_URI "")"
 GITHUB_TOKEN="$(metadata_get GITHUB_TOKEN "")"
+GCP_SA_KEY_B64="$(metadata_get GCP_SA_KEY_B64 "")"
 
 ENV_PATH="${APP_DIR}/.env"
 if [ -n "$MANNEQUIN_ENV_B64" ]; then
@@ -77,6 +78,21 @@ DEFAULT_PORT=5001
 if ! grep -q '^PORT=' "$ENV_PATH"; then
   echo "PORT=$DEFAULT_PORT" >> "$ENV_PATH"
   echo "ℹ️  Added default PORT=$DEFAULT_PORT to $ENV_PATH"
+fi
+
+# Handle GCP Service Account Key from metadata (base64 encoded)
+if [ -n "$GCP_SA_KEY_B64" ]; then
+  echo "🔑 Decoding GCP Service Account Key from metadata..."
+  GCP_SA_KEY_JSON=$(echo "$GCP_SA_KEY_B64" | base64 -d 2>/dev/null || echo "")
+  if [ -n "$GCP_SA_KEY_JSON" ]; then
+    # Add GCP_SA_KEY to .env file (escaped for single line)
+    if ! grep -q '^GCP_SA_KEY=' "$ENV_PATH"; then
+      echo "GCP_SA_KEY=$GCP_SA_KEY_JSON" >> "$ENV_PATH"
+      echo "✅ Added GCP_SA_KEY to $ENV_PATH"
+    fi
+  else
+    echo "⚠️  Failed to decode GCP_SA_KEY_B64 from metadata"
+  fi
 fi
 
 echo "📦 Cloning mannequin-segmenter repository..."

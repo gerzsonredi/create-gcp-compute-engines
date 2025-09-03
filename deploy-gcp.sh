@@ -164,6 +164,9 @@ fi
 if [ -n "$GITHUB_TOKEN_META" ]; then
   METADATA_STR="${METADATA_STR},GITHUB_TOKEN=${GITHUB_TOKEN_META}"
 fi
+if [ -n "$GCP_SA_KEY_B64" ]; then
+  METADATA_STR="${METADATA_STR},GCP_SA_KEY_B64=${GCP_SA_KEY_B64}"
+fi
 
 gcloud compute instances create $INSTANCE_NAME \
     --zone=$ZONE \
