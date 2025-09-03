@@ -157,6 +157,10 @@ echo "🖥️  Creating Compute Engine instance..."
 echo "ℹ️  Note: Will clone repository and build Docker image on VM"
 
 # Prepare metadata string
+echo "🔍 DEBUG: Environment variables before metadata preparation:"
+echo "   IMAGE_URI is ${IMAGE_URI:+SET (${#IMAGE_URI} chars)}${IMAGE_URI:-NOT_SET}"
+echo "   GCP_SA_KEY is ${GCP_SA_KEY:+SET (${#GCP_SA_KEY} chars)}${GCP_SA_KEY:-NOT_SET}"
+
 METADATA_STR="MANNEQUIN_ENV_B64=${MANNEQUIN_ENV_B64}"
 if [ -n "$IMAGE_URI" ]; then
   METADATA_STR="${METADATA_STR},IMAGE_URI=${IMAGE_URI}"
@@ -166,7 +170,12 @@ if [ -n "$GITHUB_TOKEN_META" ]; then
 fi
 if [ -n "$GCP_SA_KEY" ]; then
   METADATA_STR="${METADATA_STR},GCP_SA_KEY=${GCP_SA_KEY}"
+  echo "✅ GCP_SA_KEY added to metadata"
+else
+  echo "⚠️  GCP_SA_KEY is empty, not adding to metadata"
 fi
+
+echo "🔍 DEBUG: Final metadata string length: ${#METADATA_STR} characters"
 
 gcloud compute instances create $INSTANCE_NAME \
     --zone=$ZONE \
