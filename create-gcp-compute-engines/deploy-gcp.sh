@@ -36,6 +36,26 @@ IMAGE_URI=${IMAGE_URI:-""} # e.g. europe-west1-docker.pkg.dev/PROJECT/REPO/manne
 INSTANCE_COUNT=${INSTANCE_COUNT:-1}
 SHOW_IP_ADDRESSES=${SHOW_IP_ADDRESSES:-true}
 
+# Resolve startup script path regardless of current working directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STARTUP_SCRIPT_CANDIDATES=(
+  "startup-script-mannequin.sh"
+  "$SCRIPT_DIR/startup-script-mannequin.sh"
+  "$SCRIPT_DIR/../startup-script-mannequin.sh"
+)
+STARTUP_SCRIPT_PATH=""
+for cand in "${STARTUP_SCRIPT_CANDIDATES[@]}"; do
+  if [ -f "$cand" ]; then
+    STARTUP_SCRIPT_PATH="$cand"
+    break
+  fi
+done
+if [ -z "$STARTUP_SCRIPT_PATH" ]; then
+  echo "❌ startup-script-mannequin.sh not found next to script or in parent."
+  echo "   Checked: ${STARTUP_SCRIPT_CANDIDATES[*]}"
+  exit 1
+fi
+
 echo "🚀 Deploying Image Download Benchmark to GCP Compute Engine"
 echo "============================================================"
 
@@ -145,7 +165,7 @@ for i in $(seq 1 $INSTANCE_COUNT); do
         --zone=$ZONE \
         --machine-type=$MACHINE_TYPE \
         --network-interface=network-tier=PREMIUM,stack-type=IPV4_ONLY,subnet=default \
-        --metadata-from-file startup-script=startup-script-mannequin.sh \
+        --metadata-from-file startup-script="$STARTUP_SCRIPT_PATH" \
         --metadata "MANNEQUIN_ENV_B64=${MANNEQUIN_ENV_B64},IMAGE_URI=${IMAGE_URI}" \
         --maintenance-policy=MIGRATE \
         --provisioning-model=STANDARD \

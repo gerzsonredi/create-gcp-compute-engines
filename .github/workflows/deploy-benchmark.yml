@@ -54,8 +54,9 @@ jobs:
 
       - name: Make scripts executable
         run: |
-          chmod +x create-gcp-compute-engines/deploy-gcp.sh
-          chmod +x create-gcp-compute-engines/startup-script-mannequin.sh
+          if [ -f create-gcp-compute-engines/deploy-gcp.sh ]; then chmod +x create-gcp-compute-engines/deploy-gcp.sh; fi
+          if [ -f create-gcp-compute-engines/startup-script-mannequin.sh ]; then chmod +x create-gcp-compute-engines/startup-script-mannequin.sh; fi
+          if [ -f startup-script-mannequin.sh ]; then chmod +x startup-script-mannequin.sh; fi
 
       - name: Deploy instances
         env:
@@ -71,8 +72,12 @@ jobs:
             CF="create-gcp-compute-engines/$CF"
           fi
           export CONFIG_FILE="$CF"
-          cd create-gcp-compute-engines
-          ./deploy-gcp.sh
+          if [ -f create-gcp-compute-engines/deploy-gcp.sh ]; then
+            cd create-gcp-compute-engines
+            ./deploy-gcp.sh
+          else
+            ./deploy-gcp.sh
+          fi
 
       - name: List created instances
         run: |
