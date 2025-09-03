@@ -8,8 +8,8 @@ on:
         default: "example-configs/small-deployment.conf"
         required: true
       image_uri:
-        description: "Container image URI for mannequin service"
-        required: true
+        description: "Container image URI for mannequin service (optional, will use config default)"
+        required: false
       project_id:
         description: "GCP Project ID (overrides config)"
         required: false
