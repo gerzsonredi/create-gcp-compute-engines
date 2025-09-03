@@ -1,0 +1,81 @@
+name: "🚀 GCP Multi-Instance Deployment"
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: "Path to config file"
+        default: "example-configs/small-deployment.conf"
+        required: true
+      image_uri:
+        description: "Container image URI for mannequin service"
+        required: true
+      project_id:
+        description: "GCP Project ID (overrides config)"
+        required: false
+      zone:
+        description: "GCP Zone (overrides config)"
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up gcloud auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: 'gcloud'
+
+      - name: Show gcloud info
+        run: |
+          gcloud --version
+          gcloud auth list
+          gcloud config list
+
+      - name: Configure project (optional overrides)
+        run: |
+          if [ -n "${{ inputs.project_id }}" ]; then
+            echo "Setting gcloud project to ${{ inputs.project_id }}"
+            gcloud config set project "${{ inputs.project_id }}"
+          fi
+
+      - name: Make scripts executable
+        run: |
+          chmod +x create-gcp-compute-engines/deploy-gcp.sh
+          chmod +x create-gcp-compute-engines/startup-script-mannequin.sh
+
+      - name: Deploy instances
+        env:
+          IMAGE_URI: ${{ inputs.image_uri }}
+          PROJECT_ID: ${{ inputs.project_id }}
+          ZONE: ${{ inputs.zone }}
+        run: |
+          # Normalize CONFIG_FILE to be relative to the script directory
+          CF="${{ inputs.config_file }}"
+          if [ -f "$CF" ]; then
+            :
+          elif [ -f "create-gcp-compute-engines/$CF" ]; then
+            CF="create-gcp-compute-engines/$CF"
+          fi
+          export CONFIG_FILE="$CF"
+          cd create-gcp-compute-engines
+          ./deploy-gcp.sh
+
+      - name: List created instances
+        run: |
+          gcloud compute instances list --format='table(name,zone,status,tags.list())'
+
+
