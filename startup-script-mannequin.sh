@@ -57,7 +57,7 @@ echo "🔐 Reading metadata..."
 MANNEQUIN_ENV_B64="$(metadata_get MANNEQUIN_ENV_B64 "")"
 IMAGE_URI="$(metadata_get IMAGE_URI "")"
 GITHUB_TOKEN="$(metadata_get GITHUB_TOKEN "")"
-GCP_SA_KEY_B64="$(metadata_get GCP_SA_KEY_B64 "")"
+GCP_SA_KEY_B64="$(metadata_get GCP_SA_KEY "")"
 
 ENV_PATH="${APP_DIR}/.env"
 if [ -n "$MANNEQUIN_ENV_B64" ]; then
@@ -91,7 +91,7 @@ if [ -n "$GCP_SA_KEY_B64" ]; then
       echo "✅ Added GCP_SA_KEY to $ENV_PATH"
     fi
   else
-    echo "⚠️  Failed to decode GCP_SA_KEY_B64 from metadata"
+    echo "⚠️  Failed to decode GCP_SA_KEY from metadata"
   fi
 fi
 
