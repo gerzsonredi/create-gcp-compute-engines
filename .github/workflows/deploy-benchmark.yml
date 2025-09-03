@@ -64,14 +64,21 @@ jobs:
           PROJECT_ID: ${{ inputs.project_id }}
           ZONE: ${{ inputs.zone }}
         run: |
-          # Normalize CONFIG_FILE to be relative to the script directory
-          CF="${{ inputs.config_file }}"
-          if [ -f "$CF" ]; then
-            :
-          elif [ -f "create-gcp-compute-engines/$CF" ]; then
-            CF="create-gcp-compute-engines/$CF"
+          # Set CONFIG_FILE to absolute path from repo root
+          CONFIG_FILE_PATH="${{ inputs.config_file }}"
+          if [ -f "$CONFIG_FILE_PATH" ]; then
+            export CONFIG_FILE="$(pwd)/$CONFIG_FILE_PATH"
+          elif [ -f "create-gcp-compute-engines/$CONFIG_FILE_PATH" ]; then
+            export CONFIG_FILE="$(pwd)/create-gcp-compute-engines/$CONFIG_FILE_PATH"
+          else
+            echo "❌ Config fájl nem található: $CONFIG_FILE_PATH"
+            echo "Elérhető fájlok:"
+            find . -name "*.conf" -type f
+            exit 1
           fi
-          export CONFIG_FILE="$CF"
+          
+          echo "🔧 Config fájl: $CONFIG_FILE"
+          
           if [ -f create-gcp-compute-engines/deploy-gcp.sh ]; then
             cd create-gcp-compute-engines
             ./deploy-gcp.sh
