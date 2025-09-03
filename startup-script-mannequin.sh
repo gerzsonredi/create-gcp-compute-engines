@@ -81,18 +81,23 @@ if ! grep -q '^PORT=' "$ENV_PATH"; then
 fi
 
 # Handle GCP Service Account Key from metadata (base64 encoded)
+echo "🔍 Debug: GCP_SA_KEY_B64 is ${GCP_SA_KEY_B64:+SET (length: $(echo -n "$GCP_SA_KEY_B64" | wc -c))}${GCP_SA_KEY_B64:-NOT_SET}"
 if [ -n "$GCP_SA_KEY_B64" ]; then
   echo "🔑 Decoding GCP Service Account Key from metadata..."
   GCP_SA_KEY_JSON=$(echo "$GCP_SA_KEY_B64" | base64 -d 2>/dev/null || echo "")
   if [ -n "$GCP_SA_KEY_JSON" ]; then
+    # Remove any existing GCP_SA_KEY line first
+    grep -v '^GCP_SA_KEY=' "$ENV_PATH" > "${ENV_PATH}.tmp" 2>/dev/null || cp "$ENV_PATH" "${ENV_PATH}.tmp"
     # Add GCP_SA_KEY to .env file (escaped for single line)
-    if ! grep -q '^GCP_SA_KEY=' "$ENV_PATH"; then
-      echo "GCP_SA_KEY=$GCP_SA_KEY_JSON" >> "$ENV_PATH"
-      echo "✅ Added GCP_SA_KEY to $ENV_PATH"
-    fi
+    echo "GCP_SA_KEY=$GCP_SA_KEY_JSON" >> "${ENV_PATH}.tmp"
+    mv "${ENV_PATH}.tmp" "$ENV_PATH"
+    echo "✅ Added GCP_SA_KEY to $ENV_PATH"
+    echo "🔍 Debug: .env file now contains $(wc -l < "$ENV_PATH") lines"
   else
     echo "⚠️  Failed to decode GCP_SA_KEY from metadata"
   fi
+else
+  echo "⚠️  No GCP_SA_KEY found in metadata - service will not have GCS access"
 fi
 
 echo "📦 Cloning mannequin-segmenter repository..."
