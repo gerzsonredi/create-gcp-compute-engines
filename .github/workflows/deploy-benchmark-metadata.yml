@@ -59,12 +59,20 @@ jobs:
         id: config
         run: |
           CONFIG_INPUT="${{ github.event.inputs.config_file }}"
-          if [ -f "$CONFIG_INPUT" ]; then
-            echo "config_path=$CONFIG_INPUT" >> $GITHUB_OUTPUT
-          elif [ -f "create-gcp-compute-engines/$CONFIG_INPUT" ]; then
+          
+          # Since files are in create-gcp-compute-engines/ subdirectory, check there first
+          if [ -f "create-gcp-compute-engines/$CONFIG_INPUT" ]; then
             echo "config_path=create-gcp-compute-engines/$CONFIG_INPUT" >> $GITHUB_OUTPUT
+            echo "✅ Found config file: create-gcp-compute-engines/$CONFIG_INPUT"
+          elif [ -f "$CONFIG_INPUT" ]; then
+            echo "config_path=$CONFIG_INPUT" >> $GITHUB_OUTPUT
+            echo "✅ Found config file: $CONFIG_INPUT"
           else
-            echo "❌ Config file not found: $CONFIG_INPUT"
+            echo "❌ Config file not found in either location:"
+            echo "   - create-gcp-compute-engines/$CONFIG_INPUT"
+            echo "   - $CONFIG_INPUT"
+            echo "Available files in create-gcp-compute-engines/:"
+            ls -la create-gcp-compute-engines/ || echo "Directory not found"
             exit 1
           fi
 
