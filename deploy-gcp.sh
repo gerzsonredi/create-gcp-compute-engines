@@ -175,10 +175,24 @@ if [ -z "$GCP_SA_KEY" ] && [ -f "credentials.env" ]; then
 fi
 
 if [ -n "$GCP_SA_KEY" ]; then
-  # Base64-encode the JSON to safely pass via instance metadata
-  GCP_SA_KEY_B64=$(printf %s "$GCP_SA_KEY" | base64 | tr -d '\n')
+  # Accept both raw JSON and already base64-encoded values.
+  # If you provide base64, set GCP_SA_KEY_IS_BASE64=1 to skip re-encoding.
+  if [ "${GCP_SA_KEY_IS_BASE64:-}" = "1" ] || [ "${GCP_SA_KEY_IS_BASE64:-}" = "true" ]; then
+    GCP_SA_KEY_B64="$GCP_SA_KEY"
+  else
+    # Auto-detect: raw JSON usually contains '"type":"service_account"'
+    if echo "$GCP_SA_KEY" | grep -q '"type"[[:space:]]*:[[:space:]]*"service_account"'; then
+      GCP_SA_KEY_B64=$(printf %s "$GCP_SA_KEY" | base64 | tr -d '\n')
+    # Heuristic: looks like base64 if only base64 charset and length is multiple of 4
+    elif echo "$GCP_SA_KEY" | grep -Eq '^[A-Za-z0-9+/=]+$' && [ $(( ${#GCP_SA_KEY} % 4 )) -eq 0 ]; then
+      GCP_SA_KEY_B64="$GCP_SA_KEY"
+    else
+      # Fallback: treat as raw JSON
+      GCP_SA_KEY_B64=$(printf %s "$GCP_SA_KEY" | base64 | tr -d '\n')
+    fi
+  fi
   METADATA_STR="${METADATA_STR},GCP_SA_KEY=${GCP_SA_KEY_B64}"
-  echo "✅ GCP_SA_KEY (base64) added to metadata"
+  echo "✅ GCP_SA_KEY added to metadata (base64-ready)"
 else
   echo "⚠️  GCP_SA_KEY is empty, not adding to metadata"
   echo "   💡 Add GCP_SA_KEY to credentials.env or set as environment variable"

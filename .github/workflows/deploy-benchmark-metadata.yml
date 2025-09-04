@@ -73,6 +73,7 @@ jobs:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           ZONE: ${{ secrets.GCP_ZONE }}
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_SA_KEY_IS_BASE64: ${{ secrets.GCP_SA_KEY_IS_BASE64 }}
           CONFIG_FILE: ${{ steps.config.outputs.config_path }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |

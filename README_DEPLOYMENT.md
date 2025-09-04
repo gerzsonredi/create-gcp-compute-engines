@@ -68,6 +68,11 @@ VM_NAME=my-vm VM_ZONE=europe-west1-b ./run-benchmark-existing-vm.sh
 - Alternatíva: használd a Secret Manageres megoldást (`deploy-gcp-secret.sh` + `startup-script-gcs-secret.sh`),
   amely a kulcsot a Secret Managerből tölti le és írja be a `.env`-be. Lásd: `SECRET_MANAGER_SETUP.md`.
 
+##### Base64 vagy RAW JSON bemenet támogatás
+- Ha nálad már base64 a kulcs: állítsd be `GCP_SA_KEY_IS_BASE64=1` és add meg `GCP_SA_KEY`-be a base64-et.
+- Ha RAW JSON (többsoros) kulcsot adsz meg: a script automatikusan base64-eli.
+- A GitHub Actions workflow-ban (`deploy-benchmark-metadata.yml`) a `secrets.GCP_SA_KEY` bármelyik formátumban megadható; ha base64-et adsz, tedd mellé `GCP_SA_KEY_IS_BASE64: 1` env-ben.
+
 ## 🎯 Használati Példák
 
 ### Első alkalommal (új VM)
