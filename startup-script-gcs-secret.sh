@@ -163,18 +163,9 @@ if [ -z "$RESULTS_DIR_VAL" ]; then
   echo "ℹ️  Set RESULTS_DIR default to $RESULTS_DIR_VAL"
 fi
 
-# Install Nginx with extra modules
-echo "🐳 Installing Nginx with extra modules..."
-apt-get install -y nginx libnginx-mod-http-secure-link
-
-# Load the secure_link module (check if the module file exists first)
-if [ -f /usr/lib/nginx/modules/ngx_http_secure_link_module.so ]; then
-    echo "load_module /usr/lib/nginx/modules/ngx_http_secure_link_module.so;" > /etc/nginx/modules-enabled/50-mod-http-secure-link.conf
-    echo "✅ Secure link module loaded"
-else
-    echo "⚠️  Secure link module not found, using basic auth instead"
-    # Fallback: use basic HTTP auth or no auth for development
-fi
+# Install Nginx
+echo "🐳 Installing Nginx..."
+apt-get install -y nginx
 
 # Remove default Nginx site that conflicts with default_server
 rm -f /etc/nginx/sites-enabled/default
@@ -182,8 +173,8 @@ rm -f /etc/nginx/sites-enabled/default
 # Configure Nginx for signed URLs: /d/results/<filename>?expires=...&md5=...
 NGINX_CONF="/etc/nginx/sites-available/secure_results"
 
-# Check if secure_link module is available
-if [ -f /usr/lib/nginx/modules/ngx_http_secure_link_module.so ]; then
+# Check if secure_link module is available (compiled-in)
+if nginx -V 2>&1 | grep -q 'http_secure_link_module'; then
     echo "📝 Creating secure_link configuration..."
     cat > "$NGINX_CONF" <<EOF
 server {
