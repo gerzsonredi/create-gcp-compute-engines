@@ -18,8 +18,9 @@ import os
 # ========== KONFIGURÁCIÓS PARAMÉTEREK ==========
 TOTAL_REQUESTS_PER_INSTANCE = 500               # Összes kérések száma instance-onként
 REQUEST_TIMEOUT = 60                           # Timeout másodpercben (same as single test)
-DELAY_BETWEEN_REQUESTS = 10                # Szünet kérések között instance-onként (same as single test)
+DELAY_BETWEEN_REQUESTS = 20                # Szünet kérések között instance-onként (same as single test)
 CSV_FILE = "data_for_categorisation.csv"     # Forrás CSV a képekhez
+STAGGER_BETWEEN_WORKERS_MS = 200           # Kezdési eltérés a workerek között (ms)
 
 # VM Instance IP címek
 VM_INSTANCES = [
@@ -179,8 +180,8 @@ class InstanceWorker:
         """Worker egy adott instance-hoz - saját ClientSession-nel, szekvenciálisan küldi a kéréseket"""
         print(f"🚀 VM{self.instance_id} worker started: {self.instance_url} | dynamic CSV pulover képek")
         
-        # Staggered start to avoid bursty contention across instances
-        initial_delay = (self.instance_id - 1) * 0.5
+        # Staggered start to avoid bursty contention across instances (200ms lépés)
+        initial_delay = (self.instance_id - 1) * (STAGGER_BETWEEN_WORKERS_MS / 1000.0)
         if initial_delay > 0:
             await asyncio.sleep(initial_delay)
         
