@@ -17,10 +17,10 @@ import os
 
 # ========== KONFIGURÁCIÓS PARAMÉTEREK ==========
 TOTAL_REQUESTS_PER_INSTANCE = 500               # Összes kérések száma instance-onként
-REQUEST_TIMEOUT = 60                           # Timeout másodpercben (same as single test)
+REQUEST_TIMEOUT = 10                           # Timeout másodpercben (same as single test)
 DELAY_BETWEEN_REQUESTS = 20                # Szünet kérések között instance-onként (same as single test)
 CSV_FILE = "data_for_categorisation.csv"     # Forrás CSV a képekhez
-STAGGER_BETWEEN_WORKERS_MS = 200           # Kezdési eltérés a workerek között (ms)
+STAGGER_BETWEEN_WORKERS_MS = 500           # Kezdési eltérés a workerek között (ms)
 
 # VM Instance IP címek
 VM_INSTANCES = [
