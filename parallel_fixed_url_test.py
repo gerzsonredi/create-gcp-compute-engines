@@ -17,32 +17,17 @@ import os
 
 # ========== KONFIGURÁCIÓS PARAMÉTEREK ==========
 TOTAL_REQUESTS_PER_INSTANCE = 500               # Összes kérések száma instance-onként
-REQUEST_TIMEOUT = 10                           # Timeout másodpercben (same as single test)
-DELAY_BETWEEN_REQUESTS = 20                # Szünet kérések között instance-onként (same as single test)
+REQUEST_TIMEOUT = 10                         # Timeout másodpercben (same as single test)
+DELAY_BETWEEN_REQUESTS = 1                # Szünet kérések között instance-onként (same as single test)
 CSV_FILE = "data_for_categorisation.csv"     # Forrás CSV a képekhez
-STAGGER_BETWEEN_WORKERS_MS = 500           # Kezdési eltérés a workerek között (ms)
+STAGGER_BETWEEN_WORKERS_MS = 50           # Kezdési eltérés a workerek között (ms)
 
 # VM Instance IP címek
 VM_INSTANCES = [
-    "http://35.233.66.133:5001",
-    "http://35.187.98.56:5001", 
-    "http://34.34.136.96:5001",
-    "http://34.22.166.98:5001",
-    "http://34.14.83.46:5001",
-    "http://35.205.73.127:5001",
-    "http://34.22.130.174:5001",
     "http://34.79.218.203:5001",
-    "http://34.140.252.94:5001",
-    "http://104.155.15.184:5001",
-    "http://35.195.4.217:5001",
-    "http://34.77.34.87:5001",
-    "http://34.52.210.152:5001",
-    "http://34.77.40.49:5001",
-    "http://104.199.74.153:5001",
+    "http://104.199.74.153:5001", 
     "http://35.205.176.188:5001",
-    "http://35.195.189.152:5001",
-    "http://35.187.44.31:5001",
-    "http://23.251.142.224:5001",
+    "http://34.52.210.152:5001",
     "http://34.14.34.215:5001",
 ]
 
