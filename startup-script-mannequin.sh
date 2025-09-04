@@ -28,7 +28,8 @@ apt-get install -y \
   curl \
   gnupg \
   lsb-release \
-  git
+  git \
+  nginx
 
 echo "🐳 Installing Docker..."
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -100,6 +101,90 @@ else
   echo "⚠️  No GCP_SA_KEY found in metadata - service will not have GCS access"
 fi
 
+# ===============================================
+# NGINX + STATIC RESULTS DIRECTORY SETUP
+# ===============================================
+
+# Create results directory and set permissions
+RESULTS_DIR_DEFAULT="/var/www/d/results"
+mkdir -p "$RESULTS_DIR_DEFAULT"
+# Owner root, group www-data; allow read/execute (and write for owner)
+chown -R root:www-data /var/www/d
+chmod -R 755 /var/www/d
+
+# Helpers to get env vars from .env safely (without sourcing whole file)
+get_env_var() {
+  local key="$1"
+  local value
+  value=$(grep -E "^${key}=" "$ENV_PATH" | head -n1 | cut -d'=' -f2- || true)
+  echo -n "$value"
+}
+
+# Determine PUBLIC_BASE_URL default from instance external IP if missing
+echo "🌐 Determining PUBLIC_BASE_URL and SECURE_LINK_SECRET defaults..."
+PUBLIC_BASE_URL_VAL="$(get_env_var PUBLIC_BASE_URL)"
+if [ -z "$PUBLIC_BASE_URL_VAL" ]; then
+  EXT_IP=$(curl -sf -H "Metadata-Flavor: Google" \
+    http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip || echo "")
+  if [ -n "$EXT_IP" ]; then
+    PUBLIC_BASE_URL_VAL="http://$EXT_IP"
+    echo "PUBLIC_BASE_URL=$PUBLIC_BASE_URL_VAL" >> "$ENV_PATH"
+    echo "ℹ️  Set PUBLIC_BASE_URL default to $PUBLIC_BASE_URL_VAL"
+  fi
+fi
+
+# Ensure SECURE_LINK_SECRET exists (generate if missing)
+SECURE_LINK_SECRET_VAL="$(get_env_var SECURE_LINK_SECRET)"
+if [ -z "$SECURE_LINK_SECRET_VAL" ]; then
+  SECURE_LINK_SECRET_VAL=$(openssl rand -hex 16)
+  echo "SECURE_LINK_SECRET=$SECURE_LINK_SECRET_VAL" >> "$ENV_PATH"
+  echo "ℹ️  Generated SECURE_LINK_SECRET"
+fi
+
+# SIGNED_URL_TTL default
+SIGNED_URL_TTL_VAL="$(get_env_var SIGNED_URL_TTL)"
+if [ -z "$SIGNED_URL_TTL_VAL" ]; then
+  SIGNED_URL_TTL_VAL=600
+  echo "SIGNED_URL_TTL=$SIGNED_URL_TTL_VAL" >> "$ENV_PATH"
+  echo "ℹ️  Set SIGNED_URL_TTL default to $SIGNED_URL_TTL_VAL"
+fi
+
+# RESULTS_DIR default
+RESULTS_DIR_VAL="$(get_env_var RESULTS_DIR)"
+if [ -z "$RESULTS_DIR_VAL" ]; then
+  RESULTS_DIR_VAL="$RESULTS_DIR_DEFAULT"
+  echo "RESULTS_DIR=$RESULTS_DIR_VAL" >> "$ENV_PATH"
+  echo "ℹ️  Set RESULTS_DIR default to $RESULTS_DIR_VAL"
+fi
+
+# Configure Nginx secure_link for signed URLs: /d/results/<filename>?expires=...&md5=...
+NGINX_CONF="/etc/nginx/conf.d/secure_results.conf"
+cat > "$NGINX_CONF" <<EOF
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # Static files with secure links
+    set $secret $SECURE_LINK_SECRET_VAL;
+
+    location /d/results/ {
+        # Validate signature and expiry
+        secure_link $arg_md5,$arg_expires;
+        secure_link_md5 "$secure_link_expires$uri $secret";
+
+        if ($secure_link = "") { return 403; }
+        if ($secure_link = "0") { return 410; }
+
+        root /var/www;
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000";
+    }
+}
+EOF
+
+systemctl enable nginx
+systemctl restart nginx
+
 echo "📦 Cloning mannequin-segmenter repository..."
 echo "🔍 Debug: REPO_DIR=$REPO_DIR"
 echo "🔍 Debug: GITHUB_TOKEN is ${GITHUB_TOKEN:+SET}${GITHUB_TOKEN:-NOT_SET}"
@@ -169,6 +254,7 @@ docker run -d \
   --restart unless-stopped \
   --env-file "$ENV_PATH" \
   -e PORT=5001 \
+  -v "$RESULTS_DIR_VAL":"$RESULTS_DIR_VAL":rw \
   -p 5001:5001 \
   mannequin-segmenter:local
 
