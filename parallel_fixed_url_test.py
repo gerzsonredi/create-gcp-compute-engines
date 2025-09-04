@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Parallel Fixed URL Test Script for Mannequin Segmenter API
-Sends the same image URL in parallel to all 4 VM instances simultaneously,
-with each instance getting a new request immediately after completing the previous one
+Parallel Dynamic URL Test Script for Mannequin Segmenter API
+Mint az improved_dynamic_load_balancer: a kérésekhez a CSV-ből választunk
+random pulóver képeket, amelyek 'b.jpg'-re végződnek.
 """
 
 import asyncio
@@ -11,11 +11,15 @@ import time
 import statistics
 from datetime import datetime
 import json
+import random
+import csv
+import os
 
 # ========== KONFIGURÁCIÓS PARAMÉTEREK ==========
 TOTAL_REQUESTS_PER_INSTANCE = 500               # Összes kérések száma instance-onként
 REQUEST_TIMEOUT = 60                           # Timeout másodpercben (same as single test)
-DELAY_BETWEEN_REQUESTS = 5.0                   # Szünet kérések között instance-onként (same as single test)
+DELAY_BETWEEN_REQUESTS = 10                # Szünet kérések között instance-onként (same as single test)
+CSV_FILE = "data_for_categorisation.csv"     # Forrás CSV a képekhez
 
 # VM Instance IP címek
 VM_INSTANCES = [
@@ -23,34 +27,57 @@ VM_INSTANCES = [
     "http://35.187.98.56:5001", 
     "http://34.34.136.96:5001",
     "http://34.22.166.98:5001",
-    "http://34.14.83.46:5001"
+    "http://34.14.83.46:5001",
+    "http://35.205.73.127:5001",
+    "http://34.22.130.174:5001",
+    "http://34.79.218.203:5001",
+    "http://34.140.252.94:5001",
+    "http://104.155.15.184:5001",
+    "http://35.195.4.217:5001",
+    "http://34.77.34.87:5001",
+    "http://34.52.210.152:5001",
+    "http://34.77.40.49:5001",
+    "http://104.199.74.153:5001",
+    "http://35.205.176.188:5001",
+    "http://35.195.189.152:5001",
+    "http://35.187.44.31:5001",
+    "http://23.251.142.224:5001",
+    "http://34.14.34.215:5001",
 ]
 
-# FIXED URL - mindig ugyanaz a kép
-FIXED_IMAGE_URL_LIST = [
-    "https://storage.googleapis.com/public-images-redi/131727003.jpg",
-    "https://storage.googleapis.com/public-images-redi/0_Damski-pulover-Public-130242404a.webp",
-    "https://storage.googleapis.com/public-images-redi/131727003.png",
-    "https://storage.googleapis.com/public-images-redi/remix_measurement/image_000a01a4-2a61-4f50-a40f-b96d789e7ea6.jpg",
-    "https://storage.googleapis.com/public-images-redi/remix_measurement/image_002bd011-35be-4906-8a72-3001e88a32aa.jpg"]
+# URL kiválasztás CSV-ből (pulóver + 'b.jpg')
+def extract_pulover_urls_from_csv(csv_file):
+    urls = []
+    try:
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines[1:]:  # skip header
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    full_name = parts[1].lower()
+                    image_url = parts[2]
+                    if ("pulover" in full_name or "пуловери" in full_name) and image_url.endswith('b.jpg'):
+                        urls.append(image_url)
+    except Exception as e:
+        print(f"❌ CSV olvasási hiba: {e}")
+    return urls
 # API endpoint
 API_ENDPOINT = "/infer"
 
 # ===============================================
 
 class InstanceWorker:
-    def __init__(self, instance_url, instance_id):
+    def __init__(self, instance_url, instance_id, image_urls):
         self.instance_url = instance_url
         self.instance_id = instance_id
         self.instance_name = instance_url.split('/')[-1].split(':')[0]  # IP only
         self.results = []
         self.errors = []
         self.completed_requests = 0
-        # Per-instance fixed image URL
-        if 1 <= instance_id <= len(FIXED_IMAGE_URL_LIST):
-            self.fixed_image_url = FIXED_IMAGE_URL_LIST[instance_id - 1]
-        else:
-            self.fixed_image_url = FIXED_IMAGE_URL_LIST[0]
+        self.image_urls = image_urls
     
     async def make_request(self, session, request_id):
         """Egyetlen kérés végrehajtása ezen az instance-on"""
@@ -58,8 +85,10 @@ class InstanceWorker:
         request_start = time.time()
         
         try:
+            # Random pulóver kép kiválasztása a CSV-ből betöltött listából
+            image_url = random.choice(self.image_urls)
             payload = {
-                "image_url": self.fixed_image_url,
+                "image_url": image_url,
                 "prompt_mode": "both"
             }
             
@@ -148,7 +177,7 @@ class InstanceWorker:
     
     async def run_worker(self):
         """Worker egy adott instance-hoz - saját ClientSession-nel, szekvenciálisan küldi a kéréseket"""
-        print(f"🚀 VM{self.instance_id} worker started: {self.instance_url} | image: {self.fixed_image_url}")
+        print(f"🚀 VM{self.instance_id} worker started: {self.instance_url} | dynamic CSV pulover képek")
         
         # Staggered start to avoid bursty contention across instances
         initial_delay = (self.instance_id - 1) * 0.5
@@ -180,19 +209,22 @@ class InstanceWorker:
 
 class ParallelFixedUrlTester:
     def __init__(self):
+        # Betöltjük a pulóver 'b.jpg' képeket a CSV-ből
+        image_urls = extract_pulover_urls_from_csv(CSV_FILE)
+        if not image_urls:
+            raise RuntimeError("Nem találtunk megfelelő pulóver képeket a CSV-ben ('b.jpg').")
+
         self.workers = []
         for i, instance_url in enumerate(VM_INSTANCES, 1):
-            worker = InstanceWorker(instance_url, i)
+            worker = InstanceWorker(instance_url, i, image_urls)
             self.workers.append(worker)
-        
-        print(f"🎯 Parallel Fixed URL Teszt: {len(VM_INSTANCES)} VM, {TOTAL_REQUESTS_PER_INSTANCE} kérés/VM")
-        print(f"🖼️  Fixed Image URLs per VM:")
-        for idx, url in enumerate(FIXED_IMAGE_URL_LIST[:len(VM_INSTANCES)], start=1):
-            print(f"   VM{idx}: {url}")
+
+        print(f"🎯 Parallel Dynamic URL Teszt: {len(VM_INSTANCES)} VM, {TOTAL_REQUESTS_PER_INSTANCE} kérés/VM")
+        print(f"🖼️  Elérhető pulóver képek száma (CSV): {len(image_urls)}")
     
     async def run_parallel_test(self):
         """Párhuzamos teszt futtatása"""
-        print(f"\n🚀 Parallel Fixed URL Test")
+        print(f"\n🚀 Parallel Dynamic URL Test (CSV pulóver képek)")
         print(f"📊 Konfiguráció:")
         print(f"   - VM instance-ok: {len(VM_INSTANCES)}")
         print(f"   - Kérések/instance: {TOTAL_REQUESTS_PER_INSTANCE}")
@@ -200,7 +232,7 @@ class ParallelFixedUrlTester:
         print(f"   - Request timeout: {REQUEST_TIMEOUT}s")
         print(f"   - Kérések közötti szünet: {DELAY_BETWEEN_REQUESTS}s")
         print(f"   - Mód: PÁRHUZAMOS (minden VM egyszerre dolgozik)")
-        print(f"   - Kép: MINDIG UGYANAZ (fixed URL)")
+        print(f"   - Kép: Random pulóver képek a CSV-ből ('b.jpg')")
         print()
         
         for i, worker in enumerate(self.workers):
@@ -262,11 +294,9 @@ class ParallelFixedUrlTester:
         
         total_requests = len(all_successful) + len(all_failed)
         
-        print(f"\n📈 PÁRHUZAMOS FIXED URL TESZT EREDMÉNYEK")
+        print(f"\n📈 PÁRHUZAMOS DINAMIKUS URL TESZT EREDMÉNYEK (CSV)")
         print(f"=" * 80)
-        print(f"🖼️  Fixed Image URLs per VM:")
-        for idx, url in enumerate(FIXED_IMAGE_URL_LIST[:len(self.workers)], start=1):
-            print(f"   VM{idx}: {url}")
+        print(f"🖼️  Forrás: {CSV_FILE} (pulóver + 'b.jpg')")
         print(f"📊 Összes kérés: {total_requests}")
         print(f"✅ Sikeres kérések: {len(all_successful)}")
         print(f"❌ Sikertelen kérések: {len(all_failed)}")
