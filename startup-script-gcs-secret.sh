@@ -165,7 +165,7 @@ fi
 
 # Install Nginx with extra modules
 echo "🐳 Installing Nginx with extra modules..."
-apt-get install -y nginx nginx-module-http-secure-link
+apt-get install -y nginx libnginx-mod-http-secure-link
 
 # Load the secure_link module (check if the module file exists first)
 if [ -f /usr/lib/nginx/modules/ngx_http_secure_link_module.so ]; then
