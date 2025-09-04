@@ -59,9 +59,24 @@ echo "   Boot Disk: $BOOT_DISK_SIZE"
 echo "   OS: Ubuntu 22.04 LTS"
 if [ -n "$IMAGE_URI" ]; then echo "   Image URI: $IMAGE_URI"; fi
 
-# Enable required APIs
-echo "🔧 Enabling required APIs..."
-gcloud services enable compute.googleapis.com --project=$PROJECT_ID
+# Enable required APIs (idempotent). In CI, skip enabling if already on to avoid permission issues
+echo "🔧 Checking required APIs..."
+if gcloud services list --enabled --project="$PROJECT_ID" \
+  --filter="config.name=compute.googleapis.com" \
+  --format="value(config.name)" | grep -q "compute.googleapis.com"; then
+    echo "✅ compute.googleapis.com already enabled"
+else
+    echo "⚠️  compute.googleapis.com not enabled for project $PROJECT_ID"
+    echo "   Attempting to enable (requires serviceusage.serviceUsageAdmin or Owner)"
+    if gcloud services enable compute.googleapis.com --project="$PROJECT_ID"; then
+        echo "✅ Enabled compute.googleapis.com"
+    else
+        echo "❌ Could not enable compute.googleapis.com due to permissions."
+        echo "   Please enable it once manually, then rerun the workflow:"
+        echo "   gcloud services enable compute.googleapis.com --project=$PROJECT_ID"
+        exit 1
+    fi
+fi
 
 # Check if instance already exists
 if gcloud compute instances describe $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID &>/dev/null; then
