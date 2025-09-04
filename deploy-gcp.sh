@@ -15,7 +15,7 @@ IMAGE_FAMILY="ubuntu-2204-lts"
 IMAGE_PROJECT="ubuntu-os-cloud"
 IMAGE_URI=${IMAGE_URI:-""} # e.g. europe-west1-docker.pkg.dev/PROJECT/REPO/mannequin:<tag>
 
-echo "🚀 Deploying Image Download Benchmark to GCP Compute Engine"
+echo "🚀 Deploying Mannequin Benchmark to GCP Compute Engine [v2024.09.04]"
 echo "============================================================"
 
 # Check if gcloud is installed and authenticated
