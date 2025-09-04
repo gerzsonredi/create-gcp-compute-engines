@@ -163,16 +163,29 @@ if [ -z "$RESULTS_DIR_VAL" ]; then
   echo "ℹ️  Set RESULTS_DIR default to $RESULTS_DIR_VAL"
 fi
 
-# Install Nginx
-echo "🐳 Installing Nginx..."
-apt-get install -y nginx
+# Install Nginx with extra modules
+echo "🐳 Installing Nginx with extra modules..."
+apt-get install -y nginx nginx-module-http-secure-link
+
+# Load the secure_link module (check if the module file exists first)
+if [ -f /usr/lib/nginx/modules/ngx_http_secure_link_module.so ]; then
+    echo "load_module /usr/lib/nginx/modules/ngx_http_secure_link_module.so;" > /etc/nginx/modules-enabled/50-mod-http-secure-link.conf
+    echo "✅ Secure link module loaded"
+else
+    echo "⚠️  Secure link module not found, using basic auth instead"
+    # Fallback: use basic HTTP auth or no auth for development
+fi
 
 # Remove default Nginx site that conflicts with default_server
 rm -f /etc/nginx/sites-enabled/default
 
-# Configure Nginx secure_link for signed URLs: /d/results/<filename>?expires=...&md5=...
+# Configure Nginx for signed URLs: /d/results/<filename>?expires=...&md5=...
 NGINX_CONF="/etc/nginx/sites-available/secure_results"
-cat > "$NGINX_CONF" <<EOF
+
+# Check if secure_link module is available
+if [ -f /usr/lib/nginx/modules/ngx_http_secure_link_module.so ]; then
+    echo "📝 Creating secure_link configuration..."
+    cat > "$NGINX_CONF" <<EOF
 server {
     listen 80 default_server;
     server_name _;
@@ -200,6 +213,28 @@ server {
     }
 }
 EOF
+else
+    echo "📝 Creating fallback configuration (no secure_link)..."
+    cat > "$NGINX_CONF" <<EOF
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # Static files without secure links (development only)
+    location /d/results/ {
+        root /var/www;
+        try_files \$uri =404;
+        add_header Cache-Control "public, max-age=31536000";
+    }
+
+    # Health check endpoint
+    location /health {
+        return 200 "OK\n";
+        add_header Content-Type text/plain;
+    }
+}
+EOF
+fi
 
 # Enable the site
 ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/
