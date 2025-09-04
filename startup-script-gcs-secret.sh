@@ -167,8 +167,11 @@ fi
 echo "🐳 Installing Nginx..."
 apt-get install -y nginx
 
+# Remove default Nginx site that conflicts with default_server
+rm -f /etc/nginx/sites-enabled/default
+
 # Configure Nginx secure_link for signed URLs: /d/results/<filename>?expires=...&md5=...
-NGINX_CONF="/etc/nginx/conf.d/secure_results.conf"
+NGINX_CONF="/etc/nginx/sites-available/secure_results"
 cat > "$NGINX_CONF" <<EOF
 server {
     listen 80 default_server;
@@ -189,11 +192,27 @@ server {
         try_files \$uri =404;
         add_header Cache-Control "public, max-age=31536000";
     }
+
+    # Health check endpoint
+    location /health {
+        return 200 "OK\n";
+        add_header Content-Type text/plain;
+    }
 }
 EOF
 
-systemctl enable nginx
-systemctl restart nginx
+# Enable the site
+ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/
+
+# Test configuration before starting
+if nginx -t; then
+    systemctl enable nginx
+    systemctl restart nginx
+    echo "✅ Nginx configured and started successfully"
+else
+    echo "❌ Nginx configuration test failed"
+    nginx -t
+fi
 
 # Clone repository
 echo "📦 Cloning mannequin-segmenter repository..."
