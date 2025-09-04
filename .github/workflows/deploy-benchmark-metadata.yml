@@ -85,13 +85,24 @@ jobs:
           CONFIG_FILE: ${{ steps.config.outputs.config_path }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          echo "🔍 Debug: Looking for deploy script..."
+          echo "Available files in create-gcp-compute-engines/:"
+          ls -la create-gcp-compute-engines/ || echo "Directory not found"
+          echo "Available files in root:"
+          ls -la . | head -10
+          echo "Config file path: $CONFIG_FILE"
+          
           if [ -f "create-gcp-compute-engines/deploy-gcp.sh" ]; then
+            echo "✅ Found deploy script in subdirectory"
             cd create-gcp-compute-engines
+            chmod +x deploy-gcp.sh
             ./deploy-gcp.sh
           elif [ -f "deploy-gcp.sh" ]; then
+            echo "✅ Found deploy script in root"
+            chmod +x deploy-gcp.sh
             ./deploy-gcp.sh
           else
-            echo "❌ Deploy script not found"
+            echo "❌ Deploy script not found in either location"
             exit 1
           fi
 
