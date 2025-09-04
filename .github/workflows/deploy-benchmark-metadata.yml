@@ -55,7 +55,7 @@ jobs:
             chmod +x startup-script-mannequin.sh
           fi
 
-      - name: Determine config file path
+      - name: Determine config file path (optional)
         id: config
         run: |
           CONFIG_INPUT="${{ github.event.inputs.config_file }}"
@@ -68,12 +68,9 @@ jobs:
             echo "config_path=$CONFIG_INPUT" >> $GITHUB_OUTPUT
             echo "✅ Found config file: $CONFIG_INPUT"
           else
-            echo "❌ Config file not found in either location:"
-            echo "   - create-gcp-compute-engines/$CONFIG_INPUT"
-            echo "   - $CONFIG_INPUT"
-            echo "Available files in create-gcp-compute-engines/:"
-            ls -la create-gcp-compute-engines/ || echo "Directory not found"
-            exit 1
+            echo "⚠️  Config file not found (optional). Proceeding without it."
+            echo "   Checked: create-gcp-compute-engines/$CONFIG_INPUT and $CONFIG_INPUT"
+            echo "config_path=" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy VMs (metadata-based key injection)
@@ -89,22 +86,38 @@ jobs:
           echo "Available files in create-gcp-compute-engines/:"
           ls -la create-gcp-compute-engines/ || echo "Directory not found"
           echo "Available files in root:"
-          ls -la . | head -10
-          echo "Config file path: $CONFIG_FILE"
-          
+          ls -la . | head -20
+          echo "Config file path (as provided): $CONFIG_FILE"
+
+          # Select deploy script path without changing working directory
           if [ -f "create-gcp-compute-engines/deploy-gcp.sh" ]; then
-            echo "✅ Found deploy script in subdirectory"
-            cd create-gcp-compute-engines
-            chmod +x deploy-gcp.sh
-            ./deploy-gcp.sh
+            DEPLOY_SCRIPT="create-gcp-compute-engines/deploy-gcp.sh"
+            echo "✅ Using deploy script: $DEPLOY_SCRIPT"
           elif [ -f "deploy-gcp.sh" ]; then
-            echo "✅ Found deploy script in root"
-            chmod +x deploy-gcp.sh
-            ./deploy-gcp.sh
+            DEPLOY_SCRIPT="deploy-gcp.sh"
+            echo "✅ Using deploy script: $DEPLOY_SCRIPT"
           else
             echo "❌ Deploy script not found in either location"
             exit 1
           fi
+
+          # Normalize CONFIG_FILE to absolute path if set
+          if [ -n "$CONFIG_FILE" ]; then
+            if [ -f "$CONFIG_FILE" ]; then
+              CF_ABS=$(realpath "$CONFIG_FILE")
+            elif [ -f "create-gcp-compute-engines/$CONFIG_FILE" ]; then
+              CF_ABS=$(realpath "create-gcp-compute-engines/$CONFIG_FILE")
+            else
+              echo "⚠️  CONFIG_FILE set but not found: $CONFIG_FILE"
+            fi
+            if [ -n "$CF_ABS" ]; then
+              export CONFIG_FILE="$CF_ABS"
+              echo "🔧 Normalized CONFIG_FILE to absolute: $CONFIG_FILE"
+            fi
+          fi
+
+          chmod +x "$DEPLOY_SCRIPT"
+          bash "$DEPLOY_SCRIPT"
 
       - name: Summary
         if: always()
