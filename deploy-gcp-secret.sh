@@ -68,9 +68,26 @@ echo "   Boot Disk: $BOOT_DISK_SIZE"
 echo "   Secret Manager Secret: $SECRET_NAME"
 if [ -n "$IMAGE_URI" ]; then echo "   Image URI: $IMAGE_URI"; fi
 
-# Enable required APIs
-echo "🔧 Enabling required APIs..."
-gcloud services enable compute.googleapis.com secretmanager.googleapis.com --project=$PROJECT_ID
+# Enable required APIs (check-first to avoid permission issues in CI)
+echo "🔧 Checking required APIs..."
+
+MISSING_SERVICES=()
+for SVC in compute.googleapis.com secretmanager.googleapis.com; do
+  if gcloud services list --enabled --project="$PROJECT_ID" \
+    --filter="config.name=$SVC" --format="value(config.name)" | grep -q "$SVC"; then
+    echo "✅ $SVC already enabled"
+  else
+    echo "⚠️  $SVC not enabled for project $PROJECT_ID"
+    MISSING_SERVICES+=("$SVC")
+  fi
+done
+
+if [ ${#MISSING_SERVICES[@]} -gt 0 ]; then
+  echo "❌ Missing required services: ${MISSING_SERVICES[*]}"
+  echo "   Please enable them once, then rerun the workflow:"
+  echo "   gcloud services enable ${MISSING_SERVICES[*]} --project=$PROJECT_ID"
+  exit 1
+fi
 
 # 🔑 **Create/Update Secret in Secret Manager**
 if [ -n "$GCP_SA_KEY" ]; then
