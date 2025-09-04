@@ -168,11 +168,20 @@ fi
 if [ -n "$GITHUB_TOKEN_META" ]; then
   METADATA_STR="${METADATA_STR},GITHUB_TOKEN=${GITHUB_TOKEN_META}"
 fi
+# Try to get GCP_SA_KEY from environment if not already set
+if [ -z "$GCP_SA_KEY" ] && [ -f "credentials.env" ]; then
+  echo "🔍 Loading GCP_SA_KEY from credentials.env..."
+  GCP_SA_KEY=$(grep -E '^GCP_SA_KEY=' credentials.env | cut -d'=' -f2- || echo "")
+fi
+
 if [ -n "$GCP_SA_KEY" ]; then
-  METADATA_STR="${METADATA_STR},GCP_SA_KEY=${GCP_SA_KEY}"
-  echo "✅ GCP_SA_KEY added to metadata"
+  # Base64-encode the JSON to safely pass via instance metadata
+  GCP_SA_KEY_B64=$(printf %s "$GCP_SA_KEY" | base64 | tr -d '\n')
+  METADATA_STR="${METADATA_STR},GCP_SA_KEY=${GCP_SA_KEY_B64}"
+  echo "✅ GCP_SA_KEY (base64) added to metadata"
 else
   echo "⚠️  GCP_SA_KEY is empty, not adding to metadata"
+  echo "   💡 Add GCP_SA_KEY to credentials.env or set as environment variable"
 fi
 
 echo "🔍 DEBUG: Final metadata string length: ${#METADATA_STR} characters"

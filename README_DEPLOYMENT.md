@@ -1,5 +1,24 @@
 # 🚀 Image Download Benchmark - Complete Deployment Guide
 
+## 🔑 NEW: Automated GCP Setup (No More Manual SSH! 🎉)
+
+### One-time Setup:
+```bash
+# Run this ONCE to automatically configure your GCP Service Account key
+./setup-gcp-key.sh
+```
+
+**What it does:**
+- ✅ Automatically creates/updates `credentials.env`
+- ✅ Sets up `GCP_SA_KEY` for automatic VM injection (now passed base64-encoded and decoded on VM)
+- ✅ No more manual SSH into VM to edit `.env` files!
+- ✅ Works with all deployment methods below
+
+**Available options:**
+1. **Paste JSON directly** (recommended)
+2. **Load from file** (if you have a `.json` file)
+3. **Generate from gcloud** (automatic generation)
+
 ## 📋 Available Scripts
 
 ### 1. `full-deploy-benchmark.sh` - Complete New Deployment
@@ -41,6 +60,13 @@ VM_NAME=my-vm VM_ZONE=europe-west1-b ./run-benchmark-existing-vm.sh
 ```bash
 ./deploy-gcp.sh
 ```
+
+#### Megjegyzés a `GCP_SA_KEY` kezeléséről
+- A `deploy-gcp.sh` mostantól base64-ben továbbítja a `GCP_SA_KEY` értékét az instance metadata-ban (`GCP_SA_KEY`),
+  amelyet a VM induláskor a `startup-script-mannequin.sh` dekódol és beír az `/opt/mannequin-segmenter/.env` fájlba.
+- Ha nincs `GCP_SA_KEY` a környezetben vagy a `credentials.env`-ben, akkor a kulcs nem kerül beállításra.
+- Alternatíva: használd a Secret Manageres megoldást (`deploy-gcp-secret.sh` + `startup-script-gcs-secret.sh`),
+  amely a kulcsot a Secret Managerből tölti le és írja be a `.env`-be. Lásd: `SECRET_MANAGER_SETUP.md`.
 
 ## 🎯 Használati Példák
 
