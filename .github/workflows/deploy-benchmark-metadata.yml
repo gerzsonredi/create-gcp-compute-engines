@@ -1,0 +1,98 @@
+name: Deploy Benchmark VMs (Metadata GCP_SA_KEY)
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Configuration file to use'
+        required: false
+        default: 'example-configs/small-deployment.conf'
+        type: choice
+        options:
+          - 'example-configs/small-deployment.conf'
+          - 'example-configs/large-deployment.conf'
+          - 'deployment-config.conf'
+
+jobs:
+  deploy:
+    name: Deploy to GCP with Metadata GCP_SA_KEY
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write  # Required for Workload Identity Federation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+
+      - name: Verify authentication
+        run: |
+          gcloud auth list
+          gcloud config list project
+
+      - name: Make scripts executable
+        run: |
+          if [ -f "create-gcp-compute-engines/deploy-gcp.sh" ]; then
+            chmod +x create-gcp-compute-engines/deploy-gcp.sh
+          elif [ -f "deploy-gcp.sh" ]; then
+            chmod +x deploy-gcp.sh
+          fi
+          if [ -f "create-gcp-compute-engines/startup-script-mannequin.sh" ]; then
+            chmod +x create-gcp-compute-engines/startup-script-mannequin.sh
+          elif [ -f "startup-script-mannequin.sh" ]; then
+            chmod +x startup-script-mannequin.sh
+          fi
+
+      - name: Determine config file path
+        id: config
+        run: |
+          CONFIG_INPUT="${{ github.event.inputs.config_file }}"
+          if [ -f "$CONFIG_INPUT" ]; then
+            echo "config_path=$CONFIG_INPUT" >> $GITHUB_OUTPUT
+          elif [ -f "create-gcp-compute-engines/$CONFIG_INPUT" ]; then
+            echo "config_path=create-gcp-compute-engines/$CONFIG_INPUT" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Config file not found: $CONFIG_INPUT"
+            exit 1
+          fi
+
+      - name: Deploy VMs (metadata-based key injection)
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          ZONE: ${{ secrets.GCP_ZONE }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          CONFIG_FILE: ${{ steps.config.outputs.config_path }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          if [ -f "create-gcp-compute-engines/deploy-gcp.sh" ]; then
+            cd create-gcp-compute-engines
+            ./deploy-gcp.sh
+          elif [ -f "deploy-gcp.sh" ]; then
+            ./deploy-gcp.sh
+          else
+            echo "❌ Deploy script not found"
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🚀 Deployment Summary (Metadata)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Configuration:** ${{ steps.config.outputs.config_path }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Metadata-based GCP_SA_KEY injection" >> $GITHUB_STEP_SUMMARY
+          echo "**Security note:** Secret sourced from GitHub Secrets and passed base64 via instance metadata" >> $GITHUB_STEP_SUMMARY
+
+
